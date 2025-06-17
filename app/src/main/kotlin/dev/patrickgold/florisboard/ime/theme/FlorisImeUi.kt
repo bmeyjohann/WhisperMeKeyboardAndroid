@@ -361,6 +361,23 @@ enum class FlorisImeUi(val elementName: String, val resId: Int?) {
     SubtypePanelListItemText(
         elementName = "subtype-panel-list-item-text",
         resId = R.string.snygg__rule_element__subtype_panel_list_item_text,
+    ),
+
+    VoiceInputLayout(
+        elementName = "voice-input-layout",
+        resId = null,
+    ),
+    VoiceInputBackButton(
+        elementName = "voice-input-back-button",
+        resId = null,
+    ),
+    VoiceInputRecordButton(
+        elementName = "voice-input-record-button",
+        resId = null,
+    ),
+    VoiceInputStopButton(
+        elementName = "voice-input-stop-button",
+        resId = null,
     );
 
     companion object {

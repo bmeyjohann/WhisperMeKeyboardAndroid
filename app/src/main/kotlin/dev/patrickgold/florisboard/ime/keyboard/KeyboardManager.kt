@@ -57,6 +57,7 @@ import dev.patrickgold.florisboard.ime.text.keyboard.TextKeyData
 import dev.patrickgold.florisboard.ime.text.keyboard.TextKeyboardCache
 import dev.patrickgold.florisboard.lib.devtools.LogTopic
 import dev.patrickgold.florisboard.lib.devtools.flogError
+import dev.patrickgold.florisboard.lib.devtools.flogInfo
 import dev.patrickgold.florisboard.lib.ext.ExtensionComponentName
 import dev.patrickgold.florisboard.lib.titlecase
 import dev.patrickgold.florisboard.lib.uppercase
@@ -737,7 +738,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             KeyCode.IME_UI_MODE_TEXT -> activeState.imeUiMode = ImeUiMode.TEXT
             KeyCode.IME_UI_MODE_MEDIA -> activeState.imeUiMode = ImeUiMode.MEDIA
             KeyCode.IME_UI_MODE_CLIPBOARD -> activeState.imeUiMode = ImeUiMode.CLIPBOARD
-            KeyCode.VOICE_INPUT -> FlorisImeService.switchToVoiceInputMethod()
+            KeyCode.IME_UI_MODE_VOICE -> activeState.imeUiMode = ImeUiMode.VOICE
+            KeyCode.VOICE_INPUT -> activeState.imeUiMode = ImeUiMode.VOICE
+            KeyCode.VOICE_START_RECORDING -> startVoiceRecording()
+            KeyCode.VOICE_STOP_RECORDING -> stopVoiceRecording()
             KeyCode.KANA_SWITCHER -> handleKanaSwitch()
             KeyCode.KANA_HIRA -> handleKanaHira()
             KeyCode.KANA_KATA -> handleKanaKata()
@@ -1031,5 +1035,109 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 subtype = Subtype.DEFAULT,
             )
         }
+    }
+
+    /**
+     * Starts voice recording. This is a placeholder function that will be implemented
+     * with actual voice recording functionality.
+     */
+    private fun startVoiceRecording() {
+        val editorInfo = editorInstance.activeInfo
+        val editorContent = editorInstance.activeContent
+        val inputConnection = FlorisImeService.currentInputConnection()
+
+        flogInfo { "=== VOICE RECORDING START DEBUG INFO ===" }
+        flogInfo { "EditorInfo Details:" }
+        flogInfo { "  - Package Name: ${editorInfo.packageName}" }
+        flogInfo { "  - Input Attributes: ${editorInfo.inputAttributes}" }
+        flogInfo { "  - IME Options: ${editorInfo.imeOptions}" }
+        flogInfo { "  - Private IME Options: ${editorInfo.base.privateImeOptions}" }
+        flogInfo { "  - Action ID: ${editorInfo.extractedActionId}" }
+        flogInfo { "  - Action Label: ${editorInfo.extractedActionLabel}" }
+        flogInfo { "  - Initial Selection: ${editorInfo.initialSelection}" }
+        flogInfo { "  - Is Rich Input Editor: ${editorInfo.isRichInputEditor}" }
+        flogInfo { "  - Content MIME Types: ${editorInfo.contentMimeTypes?.contentToString()}" }
+        flogInfo { "  - Base Input Type: ${editorInfo.base.inputType}" }
+        flogInfo { "  - Base Field ID: ${editorInfo.base.fieldId}" }
+        flogInfo { "  - Base Hint Text: ${editorInfo.base.hintText}" }
+        flogInfo { "  - Base Label: ${editorInfo.base.label}" }
+
+        flogInfo { "Editor Content Details:" }
+        flogInfo { "  - Selection: ${editorContent.selection}" }
+        flogInfo { "  - Composing: ${editorContent.composing}" }
+        flogInfo { "  - Text Length: ${editorContent.text.length}" }
+        flogInfo { "  - Text Before Cursor: '${editorContent.textBeforeSelection}'" }
+        flogInfo { "  - Text After Cursor: '${editorContent.textAfterSelection}'" }
+        flogInfo { "  - Selected Text: '${editorContent.selectedText}'" }
+
+        flogInfo { "Input Connection Details:" }
+        if (inputConnection != null) {
+            try {
+                val textBeforeCursor = inputConnection.getTextBeforeCursor(100, 0)
+                val textAfterCursor = inputConnection.getTextAfterCursor(100, 0)
+                val selectedText = inputConnection.getSelectedText(0)
+                flogInfo { "  - Text Before Cursor (100 chars): '$textBeforeCursor'" }
+                flogInfo { "  - Text After Cursor (100 chars): '$textAfterCursor'" }
+                flogInfo { "  - Selected Text: '$selectedText'" }
+            } catch (e: Exception) {
+                flogInfo { "  - Error reading text: ${e.message}" }
+            }
+        } else {
+            flogInfo { "  - Input Connection is null" }
+        }
+
+        flogInfo { "Active State Details:" }
+        flogInfo { "  - Keyboard Mode: ${activeState.keyboardMode}" }
+        flogInfo { "  - Input Shift State: ${activeState.inputShiftState}" }
+        flogInfo { "  - Is Selection Mode: ${activeState.isSelectionMode}" }
+        flogInfo { "  - Layout Direction: ${activeState.layoutDirection}" }
+        flogInfo { "  - Active Cursor Caps Mode: ${editorInstance.activeCursorCapsMode}" }
+
+        flogInfo { "Current Subtype:" }
+        flogInfo { "  - Primary Locale: ${subtypeManager.activeSubtype.primaryLocale}" }
+        flogInfo { "  - LayoutMap: ${subtypeManager.activeSubtype.layoutMap}" }
+        flogInfo { "  - Composer: ${subtypeManager.activeSubtype.composer}" }
+
+        flogInfo { "=== END VOICE RECORDING START DEBUG ===" }
+
+        // TODO: Implement actual voice recording start logic
+        flogInfo { "Voice recording started" }
+    }
+
+    /**
+     * Stops voice recording. This is a placeholder function that will be implemented
+     * with actual voice recording functionality.
+     */
+    private fun stopVoiceRecording() {
+        val editorInfo = editorInstance.activeInfo
+        val editorContent = editorInstance.activeContent
+        val inputConnection = FlorisImeService.currentInputConnection()
+
+        flogInfo { "=== VOICE RECORDING STOP DEBUG INFO ===" }
+        flogInfo { "EditorInfo Details:" }
+        flogInfo { "  - Package Name: ${editorInfo.packageName}" }
+        flogInfo { "  - Current Selection: ${editorContent.selection}" }
+        flogInfo { "  - Current Composing: ${editorContent.composing}" }
+
+        flogInfo { "Input Connection Details:" }
+        if (inputConnection != null) {
+            try {
+                val textBeforeCursor = inputConnection.getTextBeforeCursor(100, 0)
+                val textAfterCursor = inputConnection.getTextAfterCursor(100, 0)
+                val selectedText = inputConnection.getSelectedText(0)
+                flogInfo { "  - Text Before Cursor (100 chars): '$textBeforeCursor'" }
+                flogInfo { "  - Text After Cursor (100 chars): '$textAfterCursor'" }
+                flogInfo { "  - Selected Text: '$selectedText'" }
+            } catch (e: Exception) {
+                flogInfo { "  - Error reading text: ${e.message}" }
+            }
+        } else {
+            flogInfo { "  - Input Connection is null" }
+        }
+
+        flogInfo { "=== END VOICE RECORDING STOP DEBUG ===" }
+
+        // TODO: Implement actual voice recording stop logic
+        flogInfo { "Voice recording stopped" }
     }
 }

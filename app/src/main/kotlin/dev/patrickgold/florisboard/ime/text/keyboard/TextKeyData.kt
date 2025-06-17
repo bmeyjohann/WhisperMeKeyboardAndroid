@@ -412,6 +412,12 @@ data class TextKeyData(
             code = KeyCode.IME_UI_MODE_CLIPBOARD,
             label = "ime_ui_mode_clipboard",
         )
+        /** Predefined key data for [KeyCode.IME_UI_MODE_VOICE] */
+        val IME_UI_MODE_VOICE = TextKeyData(
+            type = KeyType.SYSTEM_GUI,
+            code = KeyCode.IME_UI_MODE_VOICE,
+            label = "ime_ui_mode_voice",
+        )
 
         /** Predefined key data for [KeyCode.SYSTEM_INPUT_METHOD_PICKER] */
         val SYSTEM_INPUT_METHOD_PICKER = TextKeyData(
@@ -487,6 +493,18 @@ data class TextKeyData(
             type = KeyType.UNSPECIFIED,
             code = KeyCode.VOICE_INPUT,
             label = "voice_input",
+        )
+        /** Predefined key data for [KeyCode.VOICE_START_RECORDING] */
+        val VOICE_START_RECORDING = TextKeyData(
+            type = KeyType.FUNCTION,
+            code = KeyCode.VOICE_START_RECORDING,
+            label = "voice_start_recording",
+        )
+        /** Predefined key data for [KeyCode.VOICE_STOP_RECORDING] */
+        val VOICE_STOP_RECORDING = TextKeyData(
+            type = KeyType.FUNCTION,
+            code = KeyCode.VOICE_STOP_RECORDING,
+            label = "voice_stop_recording",
         )
 
         /** Predefined key data for [KeyCode.TOGGLE_SMARTBAR_VISIBILITY] */

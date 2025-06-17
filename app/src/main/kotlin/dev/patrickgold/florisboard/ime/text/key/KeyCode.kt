@@ -88,6 +88,7 @@ object KeyCode {
     const val IME_UI_MODE_TEXT =            -211
     const val IME_UI_MODE_MEDIA =           -212
     const val IME_UI_MODE_CLIPBOARD =       -213
+    const val IME_UI_MODE_VOICE =           -214
 
     const val SYSTEM_INPUT_METHOD_PICKER =  -221
     const val SYSTEM_PREV_INPUT_METHOD =    -222
@@ -101,6 +102,8 @@ object KeyCode {
     const val IME_SHOW_UI =                 -231
     const val IME_HIDE_UI =                 -232
     const val VOICE_INPUT =                 -233
+    const val VOICE_START_RECORDING =       -234
+    const val VOICE_STOP_RECORDING =        -235
 
     const val TOGGLE_SMARTBAR_VISIBILITY =  -241
     const val TOGGLE_ACTIONS_OVERFLOW =     -242
