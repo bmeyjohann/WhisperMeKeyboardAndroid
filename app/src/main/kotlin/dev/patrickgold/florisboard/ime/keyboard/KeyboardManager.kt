@@ -17,9 +17,13 @@
 package dev.patrickgold.florisboard.ime.keyboard
 
 import android.content.Context
+import android.content.Intent
 import android.icu.lang.UCharacter
+import android.media.MediaRecorder
+import android.util.Base64
 import android.view.KeyEvent
 import android.widget.Toast
+import android.view.inputmethod.InputConnection
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
@@ -68,17 +72,22 @@ import java.lang.ref.WeakReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.florisboard.lib.android.AndroidKeyguardManager
 import org.florisboard.lib.android.showLongToast
 import org.florisboard.lib.android.showShortToast
 import org.florisboard.lib.android.systemService
 import org.florisboard.lib.kotlin.collectIn
 import org.florisboard.lib.kotlin.collectLatestIn
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.atomic.AtomicInteger
 
 private val DoubleSpacePeriodMatcher = """([^.!?‽\s]\s)""".toRegex()
@@ -100,6 +109,14 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     val activeState = ObservableKeyboardState.new()
     var smartbarVisibleDynamicActionsCount by mutableIntStateOf(0)
     private var lastToastReference = WeakReference<Toast>(null)
+    
+    // Voice recording state
+    private val _isVoiceRecording = MutableStateFlow(false)
+    val isVoiceRecording = _isVoiceRecording.asStateFlow()
+    private var voiceRecordingFile: File? = null
+    private var mediaRecorder: MediaRecorder? = null
+    private var isVoiceProcessing = false
+    private var wasPendingVoiceInput = false
 
     private val activeEvaluatorGuard = Mutex(locked = false)
     private var activeEvaluatorVersion = AtomicInteger(0)
@@ -1038,106 +1055,672 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     }
 
     /**
-     * Starts voice recording. This is a placeholder function that will be implemented
-     * with actual voice recording functionality.
+     * Starts voice recording and gathers context information.
      */
     private fun startVoiceRecording() {
+        if (_isVoiceRecording.value) {
+            flogInfo { "Voice recording already in progress" }
+            return
+        }
+
         val editorInfo = editorInstance.activeInfo
         val editorContent = editorInstance.activeContent
         val inputConnection = FlorisImeService.currentInputConnection()
 
-        flogInfo { "=== VOICE RECORDING START DEBUG INFO ===" }
-        flogInfo { "EditorInfo Details:" }
-        flogInfo { "  - Package Name: ${editorInfo.packageName}" }
-        flogInfo { "  - Input Attributes: ${editorInfo.inputAttributes}" }
-        flogInfo { "  - IME Options: ${editorInfo.imeOptions}" }
-        flogInfo { "  - Private IME Options: ${editorInfo.base.privateImeOptions}" }
-        flogInfo { "  - Action ID: ${editorInfo.extractedActionId}" }
-        flogInfo { "  - Action Label: ${editorInfo.extractedActionLabel}" }
-        flogInfo { "  - Initial Selection: ${editorInfo.initialSelection}" }
-        flogInfo { "  - Is Rich Input Editor: ${editorInfo.isRichInputEditor}" }
-        flogInfo { "  - Content MIME Types: ${editorInfo.contentMimeTypes?.contentToString()}" }
-        flogInfo { "  - Base Input Type: ${editorInfo.base.inputType}" }
-        flogInfo { "  - Base Field ID: ${editorInfo.base.fieldId}" }
-        flogInfo { "  - Base Hint Text: ${editorInfo.base.hintText}" }
-        flogInfo { "  - Base Label: ${editorInfo.base.label}" }
-
-        flogInfo { "Editor Content Details:" }
-        flogInfo { "  - Selection: ${editorContent.selection}" }
-        flogInfo { "  - Composing: ${editorContent.composing}" }
-        flogInfo { "  - Text Length: ${editorContent.text.length}" }
-        flogInfo { "  - Text Before Cursor: '${editorContent.textBeforeSelection}'" }
-        flogInfo { "  - Text After Cursor: '${editorContent.textAfterSelection}'" }
-        flogInfo { "  - Selected Text: '${editorContent.selectedText}'" }
-
-        flogInfo { "Input Connection Details:" }
-        if (inputConnection != null) {
-            try {
-                val textBeforeCursor = inputConnection.getTextBeforeCursor(100, 0)
-                val textAfterCursor = inputConnection.getTextAfterCursor(100, 0)
-                val selectedText = inputConnection.getSelectedText(0)
-                flogInfo { "  - Text Before Cursor (100 chars): '$textBeforeCursor'" }
-                flogInfo { "  - Text After Cursor (100 chars): '$textAfterCursor'" }
-                flogInfo { "  - Selected Text: '$selectedText'" }
-            } catch (e: Exception) {
-                flogInfo { "  - Error reading text: ${e.message}" }
-            }
-        } else {
-            flogInfo { "  - Input Connection is null" }
+        flogInfo { "=== VOICE RECORDING START ===" }
+        flogInfo { "Package: ${editorInfo.packageName}" }
+        flogInfo { "Field hint: ${editorInfo.base.hintText}" }
+        flogInfo { "Text before cursor: '${editorContent.textBeforeSelection.takeLast(50)}'" }
+        
+        // Check microphone permission first
+        if (!hasRecordAudioPermission()) {
+            flogError { "RECORD_AUDIO permission not granted" }
+            wasPendingVoiceInput = true // Remember we wanted to start voice input
+            requestMicrophonePermission()
+            return
         }
-
-        flogInfo { "Active State Details:" }
-        flogInfo { "  - Keyboard Mode: ${activeState.keyboardMode}" }
-        flogInfo { "  - Input Shift State: ${activeState.inputShiftState}" }
-        flogInfo { "  - Is Selection Mode: ${activeState.isSelectionMode}" }
-        flogInfo { "  - Layout Direction: ${activeState.layoutDirection}" }
-        flogInfo { "  - Active Cursor Caps Mode: ${editorInstance.activeCursorCapsMode}" }
-
-        flogInfo { "Current Subtype:" }
-        flogInfo { "  - Primary Locale: ${subtypeManager.activeSubtype.primaryLocale}" }
-        flogInfo { "  - LayoutMap: ${subtypeManager.activeSubtype.layoutMap}" }
-        flogInfo { "  - Composer: ${subtypeManager.activeSubtype.composer}" }
-
-        flogInfo { "=== END VOICE RECORDING START DEBUG ===" }
-
-        // TODO: Implement actual voice recording start logic
-        flogInfo { "Voice recording started" }
+        
+        // Check if microphone is available
+        if (isMicrophoneBusy()) {
+            flogError { "Microphone is currently in use by another app" }
+            appContext.showShortToast("🎤 Microphone in use by another app")
+            return
+        }
+        
+        // Start the actual recording
+        try {
+            // Create output file (using .wav for optimal Groq performance)
+            voiceRecordingFile = File(appContext.cacheDir, "voice_recording_${System.currentTimeMillis()}.wav")
+            flogInfo { "Created audio file: ${voiceRecordingFile?.absolutePath}" }
+            
+            // Initialize MediaRecorder with better configuration
+            mediaRecorder = MediaRecorder().apply {
+                try {
+                    flogInfo { "Setting audio source..." }
+                    // Try different audio sources as fallbacks
+                    val audioSources = listOf(
+                        MediaRecorder.AudioSource.MIC,
+                        MediaRecorder.AudioSource.DEFAULT,
+                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                        MediaRecorder.AudioSource.VOICE_COMMUNICATION
+                    )
+                    
+                    var audioSourceSet = false
+                    for (source in audioSources) {
+                        try {
+                            flogInfo { "Trying audio source: $source" }
+                            setAudioSource(source)
+                            flogInfo { "Audio source $source set successfully" }
+                            audioSourceSet = true
+                            break
+                        } catch (e: Exception) {
+                            flogInfo { "Audio source $source failed: ${e.message}" }
+                        }
+                    }
+                    
+                    if (!audioSourceSet) {
+                        throw RuntimeException("No audio source available")
+                    }
+                    
+                    flogInfo { "Setting output format..." }
+                    setOutputFormat(MediaRecorder.OutputFormat.DEFAULT) // Use default for WAV compatibility
+                    flogInfo { "Output format set successfully" }
+                    
+                    flogInfo { "Setting audio encoder..." }
+                    setAudioEncoder(MediaRecorder.AudioEncoder.DEFAULT) // Use default encoder for WAV
+                    flogInfo { "Audio encoder set successfully" }
+                    
+                    flogInfo { "Setting audio encoding bitrate..." }
+                    setAudioEncodingBitRate(16000) // 16 Kbps as per working config
+                    flogInfo { "Audio encoding bitrate set successfully" }
+                    
+                    flogInfo { "Setting audio sampling rate..." }
+                    setAudioSamplingRate(16000) // 16kHz as per working config
+                    flogInfo { "Audio sampling rate set successfully" }
+                    
+                    flogInfo { "Setting audio channels..." }
+                    setAudioChannels(1) // Mono as per working config
+                    flogInfo { "Audio channels set successfully" }
+                    
+                    flogInfo { "Setting output file: ${voiceRecordingFile?.absolutePath}" }
+                    setOutputFile(voiceRecordingFile?.absolutePath)
+                    flogInfo { "Output file set successfully" }
+                    
+                    flogInfo { "Preparing MediaRecorder..." }
+                    prepare()
+                    flogInfo { "MediaRecorder prepared successfully" }
+                    
+                    flogInfo { "Starting recording..." }
+                    start()
+                    flogInfo { "MediaRecorder started successfully!" }
+                } catch (e: Exception) {
+                    flogError { "MediaRecorder setup failed at step: ${e.message}" }
+                    flogError { "Exception details: ${e.javaClass.simpleName}" }
+                    throw e
+                }
+            }
+            
+            _isVoiceRecording.value = true
+            
+            flogInfo { "Voice recording started successfully" }
+            flogInfo { "Output file: ${voiceRecordingFile?.absolutePath}" }
+            
+            // Gather context for when we stop recording
+            val voiceContext = buildVoiceContext(editorInfo, editorContent, inputConnection)
+            flogInfo { "Context gathered: ${voiceContext.packageName}, field: ${voiceContext.fieldType}" }
+            
+            // Show user feedback
+            appContext.showShortToast("🎤 Recording started...")
+            
+        } catch (e: SecurityException) {
+            flogError { "Permission denied for voice recording: ${e.message}" }
+            _isVoiceRecording.value = false
+            voiceRecordingFile = null
+            mediaRecorder = null
+            appContext.showShortToast("❌ Microphone permission required")
+        } catch (e: Exception) {
+            flogError { "Failed to start voice recording: ${e.message}" }
+            flogError { "Exception type: ${e.javaClass.simpleName}" }
+            e.printStackTrace()
+            _isVoiceRecording.value = false
+            voiceRecordingFile = null
+            mediaRecorder = null
+            appContext.showShortToast("❌ Recording failed: ${e.message}")
+        }
     }
 
     /**
-     * Stops voice recording. This is a placeholder function that will be implemented
-     * with actual voice recording functionality.
+     * Stops voice recording, processes audio, and sends to backend for processing.
      */
     private fun stopVoiceRecording() {
+        if (!_isVoiceRecording.value) {
+            flogInfo { "No voice recording in progress" }
+            return
+        }
+
         val editorInfo = editorInstance.activeInfo
         val editorContent = editorInstance.activeContent
         val inputConnection = FlorisImeService.currentInputConnection()
 
-        flogInfo { "=== VOICE RECORDING STOP DEBUG INFO ===" }
-        flogInfo { "EditorInfo Details:" }
-        flogInfo { "  - Package Name: ${editorInfo.packageName}" }
-        flogInfo { "  - Current Selection: ${editorContent.selection}" }
-        flogInfo { "  - Current Composing: ${editorContent.composing}" }
+        flogInfo { "=== VOICE RECORDING STOP ===" }
+        
+        try {
+            // Stop MediaRecorder
+            flogInfo { "Stopping MediaRecorder..." }
+            mediaRecorder?.apply {
+                stop()
+                release()
+                flogInfo { "MediaRecorder stopped and released" }
+            }
+            mediaRecorder = null
+            _isVoiceRecording.value = false
+            
+            // Show user feedback
+            appContext.showShortToast("🔄 Processing audio...")
+            
+            // Gather context information for the backend
+            val voiceContext = buildVoiceContext(editorInfo, editorContent, inputConnection)
+            
+            flogInfo { "Recording stopped, processing audio..." }
+            flogInfo { "File: ${voiceRecordingFile?.absolutePath}" }
+            flogInfo { "File exists: ${voiceRecordingFile?.exists()}" }
+            flogInfo { "File size: ${voiceRecordingFile?.length()} bytes" }
+            flogInfo { "Context: ${voiceContext.packageName} - ${voiceContext.fieldType}" }
+            
+            // Process the audio file
+            voiceRecordingFile?.let { audioFile ->
+                if (audioFile.exists() && audioFile.length() > 0) {
+                    flogInfo { "Audio file is valid, starting processing..." }
+                    isVoiceProcessing = true
+                    scope.launch {
+                        processVoiceRecording(audioFile, voiceContext)
+                    }
+                } else {
+                    flogError { "Audio file is invalid: exists=${audioFile.exists()}, size=${audioFile.length()}" }
+                    appContext.showShortToast("❌ No audio recorded")
+                    isVoiceProcessing = false
+                }
+            } ?: run {
+                flogError { "No audio file to process" }
+                appContext.showShortToast("❌ No audio file found")
+                isVoiceProcessing = false
+            }
+            
+        } catch (e: RuntimeException) {
+            flogError { "Failed to stop MediaRecorder: ${e.message}" }
+            flogError { "Exception type: ${e.javaClass.simpleName}" }
+            e.printStackTrace()
+            _isVoiceRecording.value = false
+            mediaRecorder?.release()
+            mediaRecorder = null
+            appContext.showShortToast("❌ Failed to stop recording")
+        } catch (e: Exception) {
+            flogError { "Failed to stop voice recording: ${e.message}" }
+            flogError { "Exception type: ${e.javaClass.simpleName}" }
+            e.printStackTrace()
+            _isVoiceRecording.value = false
+            appContext.showShortToast("❌ Recording error: ${e.message}")
+        } finally {
+            // Clean up will happen in processVoiceRecording or here if failed
+            if (!isVoiceProcessing) {
+                voiceRecordingFile?.delete()
+                voiceRecordingFile = null
+            }
+        }
+    }
 
-        flogInfo { "Input Connection Details:" }
-        if (inputConnection != null) {
+    /**
+     * Builds voice context from current editor state for backend processing.
+     */
+    private fun buildVoiceContext(
+        editorInfo: FlorisEditorInfo,
+        editorContent: EditorContent,
+        inputConnection: InputConnection?
+    ): VoiceContextData {
+        val textBeforeCursor = inputConnection?.getTextBeforeCursor(500, 0)?.toString() 
+            ?: editorContent.textBeforeSelection
+        val textAfterCursor = inputConnection?.getTextAfterCursor(500, 0)?.toString() 
+            ?: editorContent.textAfterSelection
+        val selectedText = inputConnection?.getSelectedText(0)?.toString() 
+            ?: editorContent.selectedText
+
+        return VoiceContextData(
+            textBeforeCursor = textBeforeCursor,
+            textAfterCursor = textAfterCursor,
+            selectedText = selectedText,
+            cursorPosition = editorContent.selection.start,
+            packageName = editorInfo.packageName ?: "unknown",
+            fieldType = determineFieldType(editorInfo),
+            fieldHint = editorInfo.base.hintText?.toString(),
+            fieldLabel = editorInfo.base.label?.toString(),
+            isPasswordField = isPasswordField(editorInfo),
+            isRichEditor = editorInfo.isRichInputEditor,
+            keyboardMode = activeState.keyboardMode.toString(),
+            inputShiftState = activeState.inputShiftState.toString(),
+            locale = subtypeManager.activeSubtype.primaryLocale.toString(),
+            contentMimeTypes = editorInfo.contentMimeTypes?.toList(),
+            imeAction = editorInfo.imeOptions.action.toString(),
+            flagNoEnterAction = editorInfo.imeOptions.flagNoEnterAction,
+            flagNoPersonalizedLearning = editorInfo.imeOptions.flagNoPersonalizedLearning
+        )
+    }
+
+    /**
+     * Determines if the field is a password field.
+     */
+    private fun isPasswordField(editorInfo: FlorisEditorInfo): Boolean {
+        return when (editorInfo.inputAttributes.variation) {
+            InputAttributes.Variation.PASSWORD,
+            InputAttributes.Variation.WEB_PASSWORD,
+            InputAttributes.Variation.VISIBLE_PASSWORD -> true
+            else -> false
+        }
+    }
+    
+    /**
+     * Determines the field type based on editor info.
+     */
+    private fun determineFieldType(editorInfo: FlorisEditorInfo): String {
+        return when (editorInfo.inputAttributes.variation) {
+            InputAttributes.Variation.EMAIL_ADDRESS,
+            InputAttributes.Variation.WEB_EMAIL_ADDRESS -> "email"
+            InputAttributes.Variation.PASSWORD,
+            InputAttributes.Variation.WEB_PASSWORD,
+            InputAttributes.Variation.VISIBLE_PASSWORD -> "password"
+            InputAttributes.Variation.URI -> "url"
+            InputAttributes.Variation.PERSON_NAME -> "name"
+            else -> when {
+                editorInfo.inputAttributes.flagTextMultiLine -> "multiline_text"
+                editorInfo.packageName?.contains("sms", ignoreCase = true) == true -> "sms"
+                editorInfo.packageName?.contains("mail", ignoreCase = true) == true -> "email_app"
+                editorInfo.packageName?.contains("search", ignoreCase = true) == true -> "search"
+                else -> "text"
+            }
+        }
+    }
+
+    /**
+     * Processes the recorded audio file and sends it to the backend.
+     */
+    private suspend fun processVoiceRecording(audioFile: File, context: VoiceContextData) {
+        try {
+            flogInfo { "=== PROCESSING VOICE RECORDING ===" }
+            flogInfo { "Audio file: ${audioFile.absolutePath}" }
+            flogInfo { "File size: ${audioFile.length()} bytes" }
+            flogInfo { "File exists: ${audioFile.exists()}" }
+            
+            if (!audioFile.exists() || audioFile.length() == 0L) {
+                flogError { "Audio file is invalid: exists=${audioFile.exists()}, size=${audioFile.length()}" }
+                withContext(Dispatchers.Main) {
+                    appContext.showShortToast("❌ Invalid audio file")
+                }
+                return
+            }
+            
+            // Convert audio to base64
+            flogInfo { "Reading audio file..." }
+            val audioBytes = audioFile.readBytes()
+            flogInfo { "Audio data read: ${audioBytes.size} bytes" }
+            
+            flogInfo { "Converting to base64..." }
+            val base64Audio = Base64.encodeToString(audioBytes, Base64.NO_WRAP)
+            flogInfo { "Audio converted to base64: ${base64Audio.length} characters" }
+            
+            // Send to backend
+            flogInfo { "Sending to backend..." }
+            val response = sendVoiceToBackend(base64Audio, context)
+            flogInfo { "Backend response received: success=${response.success}" }
+            
+            // Process the response
+            withContext(Dispatchers.Main) {
+                processVoiceResponse(response)
+            }
+            
+        } catch (e: OutOfMemoryError) {
+            flogError { "Out of memory processing audio: ${e.message}" }
+            withContext(Dispatchers.Main) {
+                appContext.showShortToast("❌ Audio file too large")
+            }
+        } catch (e: Exception) {
+            flogError { "Failed to process voice recording: ${e.message}" }
+            flogError { "Exception type: ${e.javaClass.simpleName}" }
+            e.printStackTrace()
+            withContext(Dispatchers.Main) {
+                handleVoiceError("Failed to process audio: ${e.message}")
+            }
+        } finally {
+            // Clean up the audio file
             try {
-                val textBeforeCursor = inputConnection.getTextBeforeCursor(100, 0)
-                val textAfterCursor = inputConnection.getTextAfterCursor(100, 0)
-                val selectedText = inputConnection.getSelectedText(0)
-                flogInfo { "  - Text Before Cursor (100 chars): '$textBeforeCursor'" }
-                flogInfo { "  - Text After Cursor (100 chars): '$textAfterCursor'" }
-                flogInfo { "  - Selected Text: '$selectedText'" }
+                if (audioFile.exists()) {
+                    val deleted = audioFile.delete()
+                    flogInfo { "Temporary audio file deleted: $deleted" }
+                }
             } catch (e: Exception) {
-                flogInfo { "  - Error reading text: ${e.message}" }
+                flogError { "Failed to delete temporary file: ${e.message}" }
+            }
+            
+            // Reset processing state
+            isVoiceProcessing = false
+            voiceRecordingFile = null
+        }
+    }
+    
+    /**
+     * Sends voice data to the backend for processing.
+     */
+    private suspend fun sendVoiceToBackend(base64Audio: String, context: VoiceContextData): VoiceResponse {
+        val serverUrl = "https://process-voice.benjamin-meyjohann.workers.dev"
+        
+        return withContext(Dispatchers.IO) {
+            try {
+                flogInfo { "=== SENDING TO BACKEND ===" }
+                flogInfo { "URL: $serverUrl" }
+                flogInfo { "Audio length: ${base64Audio.length} characters" }
+                flogInfo { "Context: ${context.packageName} - ${context.fieldType}" }
+                flogInfo { "Text before cursor: '${context.textBeforeCursor.takeLast(100)}'" }
+                
+                // Create JSON request body
+                val requestBody = buildJsonRequest(base64Audio, context)
+                flogInfo { "Request body length: ${requestBody.length} characters" }
+                
+                // Create HTTP connection
+                val url = URL(serverUrl)
+                val connection = url.openConnection() as HttpURLConnection
+                
+                connection.requestMethod = "POST"
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("Accept", "application/json")
+                connection.setRequestProperty("User-Agent", "WhisperIt-Android/1.0")
+                connection.doOutput = true
+                connection.connectTimeout = 30000 // 30 seconds
+                connection.readTimeout = 60000 // 60 seconds
+                
+                flogInfo { "Sending HTTP request..." }
+                
+                // Send request
+                connection.outputStream.use { os ->
+                    os.write(requestBody.toByteArray(Charsets.UTF_8))
+                    os.flush()
+                }
+                
+                flogInfo { "Request sent, waiting for response..." }
+                
+                // Read response
+                val responseCode = connection.responseCode
+                flogInfo { "Response code: $responseCode" }
+                
+                val responseBody = if (responseCode in 200..299) {
+                    connection.inputStream.bufferedReader().readText()
+                } else {
+                    connection.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
+                }
+                
+                flogInfo { "Response received (${responseBody.length} chars): ${responseBody.take(500)}..." }
+                
+                if (responseCode in 200..299) {
+                    parseVoiceResponse(responseBody)
+                } else {
+                    flogError { "HTTP error $responseCode: $responseBody" }
+                    VoiceResponse(
+                        success = false,
+                        transcription = null,
+                        error = "Server error: $responseCode - ${responseBody.take(200)}"
+                    )
+                }
+                
+            } catch (e: java.net.SocketTimeoutException) {
+                flogError { "Request timeout: ${e.message}" }
+                VoiceResponse(success = false, transcription = null, error = "Request timeout - check your internet connection")
+            } catch (e: java.net.UnknownHostException) {
+                flogError { "Network error: ${e.message}" }
+                VoiceResponse(success = false, transcription = null, error = "Network error - check your internet connection")
+            } catch (e: Exception) {
+                flogError { "HTTP request failed: ${e.message}" }
+                flogError { "Exception type: ${e.javaClass.simpleName}" }
+                e.printStackTrace()
+                VoiceResponse(success = false, transcription = null, error = "Network request failed: ${e.message}")
+            }
+        }
+    }
+    
+    /**
+     * Builds the JSON request body for the backend.
+     */
+    private fun buildJsonRequest(base64Audio: String, context: VoiceContextData): String {
+        // Escape JSON strings
+        fun String.escapeJson(): String = this
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+        
+        return """
+            {
+                "audio": "$base64Audio",
+                "format": "wav",
+                "context": {
+                    "textBeforeCursor": "${context.textBeforeCursor.escapeJson()}",
+                    "textAfterCursor": "${context.textAfterCursor.escapeJson()}",
+                    "selectedText": "${context.selectedText.escapeJson()}",
+                    "cursorPosition": ${context.cursorPosition},
+                    "packageName": "${context.packageName.escapeJson()}",
+                    "fieldType": "${context.fieldType?.escapeJson() ?: ""}",
+                    "fieldHint": "${context.fieldHint?.escapeJson() ?: ""}",
+                    "fieldLabel": "${context.fieldLabel?.escapeJson() ?: ""}",
+                    "isPasswordField": ${context.isPasswordField},
+                    "isRichEditor": ${context.isRichEditor},
+                    "keyboardMode": "${context.keyboardMode.escapeJson()}",
+                    "inputShiftState": "${context.inputShiftState.escapeJson()}",
+                    "locale": "${context.locale.escapeJson()}",
+                    "contentMimeTypes": ${context.contentMimeTypes?.takeIf { it.isNotEmpty() }?.let { types -> "[" + types.map { "\"${it.escapeJson()}\"" }.joinToString(",") + "]" } ?: "null"},
+                    "imeOptions": {
+                        "action": "${context.imeAction.escapeJson()}",
+                        "flagNoEnterAction": ${context.flagNoEnterAction},
+                        "flagNoPersonalizedLearning": ${context.flagNoPersonalizedLearning}
+                    }
+                }
+            }
+        """.trimIndent()
+    }
+    
+    /**
+     * Parses the JSON response from the backend.
+     */
+    private fun parseVoiceResponse(responseBody: String): VoiceResponse {
+        return try {
+            flogInfo { "Parsing response..." }
+            
+            // Simple JSON parsing for the complex backend response structure
+            val successPattern = """"success":\s*true""".toRegex()
+            val errorPattern = """"error":\s*"([^"]+)"""".toRegex()
+            
+            if (successPattern.containsMatchIn(responseBody)) {
+                // Try to extract transcription text
+                val transcriptionTextPattern = """"transcription":\s*\{[^}]*"text":\s*"([^"]+)"""".toRegex()
+                val directTextPattern = """"text":\s*"([^"]+)"""".toRegex()
+                
+                val transcription = transcriptionTextPattern.find(responseBody)?.groupValues?.get(1)
+                    ?: directTextPattern.find(responseBody)?.groupValues?.get(1)
+                    ?: ""
+                
+                // Check if there's an agent response with actions
+                val agentResponsePattern = """"agentResponse":\s*\{""".toRegex()
+                val actionPattern = """"action":\s*"([^"]+)"""".toRegex()
+                val textToInsertPattern = """"textToInsert":\s*"([^"]+)"""".toRegex()
+                
+                if (agentResponsePattern.containsMatchIn(responseBody)) {
+                    flogInfo { "Found agent response in backend response" }
+                    
+                    val action = actionPattern.find(responseBody)?.groupValues?.get(1)
+                    val textToInsert = textToInsertPattern.find(responseBody)?.groupValues?.get(1)
+                    
+                    flogInfo { "Agent action: '$action', text: '$textToInsert'" }
+                    
+                    // For now, we'll use the textToInsert or fall back to transcription
+                    val finalText = textToInsert ?: transcription
+                    flogInfo { "Using final text: '$finalText'" }
+                    
+                    VoiceResponse(success = true, transcription = finalText, error = null)
+                } else {
+                    flogInfo { "Using direct transcription: '$transcription'" }
+                    VoiceResponse(success = true, transcription = transcription, error = null)
+                }
+            } else {
+                val error = errorPattern.find(responseBody)?.groupValues?.get(1) ?: "Unknown backend error"
+                flogError { "Backend returned error: $error" }
+                VoiceResponse(success = false, transcription = null, error = error)
+            }
+        } catch (e: Exception) {
+            flogError { "Failed to parse response: ${e.message}" }
+            VoiceResponse(success = false, transcription = null, error = "Failed to parse response: ${e.message}")
+        }
+    }
+    
+    /**
+     * Processes the response from the backend.
+     */
+    private fun processVoiceResponse(response: VoiceResponse) {
+        flogInfo { "=== PROCESSING VOICE RESPONSE ===" }
+        flogInfo { "Success: ${response.success}" }
+        flogInfo { "Transcription: '${response.transcription}'" }
+        flogInfo { "Error: ${response.error}" }
+        
+        if (response.success) {
+            response.transcription?.let { text ->
+                if (text.isNotBlank()) {
+                    flogInfo { "Inserting transcribed text: '$text'" }
+                    editorInstance.commitText(text)
+                    appContext.showShortToast("✅ Voice input processed")
+                } else {
+                    flogInfo { "Transcription is empty" }
+                    appContext.showShortToast("🔇 No speech detected")
+                }
+            } ?: run {
+                flogError { "Successful response but no transcription text" }
+                appContext.showShortToast("❌ Empty response from server")
             }
         } else {
-            flogInfo { "  - Input Connection is null" }
+            val errorMessage = response.error ?: "Unknown error"
+            flogError { "Voice processing failed: $errorMessage" }
+            handleVoiceError(errorMessage)
         }
-
-        flogInfo { "=== END VOICE RECORDING STOP DEBUG ===" }
-
-        // TODO: Implement actual voice recording stop logic
-        flogInfo { "Voice recording stopped" }
     }
+    
+    /**
+     * Handles voice processing errors.
+     */
+    private fun handleVoiceError(error: String) {
+        flogError { "Voice processing error: $error" }
+        
+        // Show user-friendly error message
+        val userMessage = when {
+            error.contains("timeout", ignoreCase = true) -> "⏱️ Request timed out - try again"
+            error.contains("network", ignoreCase = true) -> "🌐 Network error - check connection"
+            error.contains("permission", ignoreCase = true) -> "🎤 Microphone permission required"
+            error.contains("server", ignoreCase = true) -> "🔧 Server error - try again later"
+            error.contains("audio", ignoreCase = true) -> "🔊 Audio recording error"
+            else -> "❌ Voice input failed"
+        }
+        
+        appContext.showShortToast(userMessage)
+        flogInfo { "Displayed user message: $userMessage" }
+    }
+    
+    /**
+     * Returns whether voice recording is currently active.
+     * This can be used by UI components to show recording state.
+     */
+    fun isVoiceRecordingActive(): Boolean = _isVoiceRecording.value
+    
+    /**
+     * Called when permissions might have changed - checks if we can now start pending voice input.
+     */
+    fun checkPendingVoiceInput() {
+        if (wasPendingVoiceInput && hasRecordAudioPermission()) {
+            flogInfo { "Permission granted - resuming voice input" }
+            wasPendingVoiceInput = false
+            // Try to start voice recording again
+            scope.launch(Dispatchers.Main) {
+                // Give a small delay for UI to settle
+                delay(500)
+                startVoiceRecording()
+            }
+        }
+    }
+    
+    /**
+     * Checks if the app has RECORD_AUDIO permission.
+     */
+    private fun hasRecordAudioPermission(): Boolean {
+        return android.content.pm.PackageManager.PERMISSION_GRANTED == 
+            appContext.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+    }
+    
+    /**
+     * Requests microphone permission by launching the permission activity.
+     */
+    private fun requestMicrophonePermission() {
+        try {
+            flogInfo { "Launching permission request activity..." }
+            val intent = Intent("dev.patrickgold.florisboard.REQUEST_MICROPHONE_PERMISSION").apply {
+                setClassName(appContext.packageName, "dev.patrickgold.florisboard.ime.voice.VoicePermissionActivity")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            appContext.startActivity(intent)
+            appContext.showShortToast("🎤 Please grant microphone permission for voice input")
+        } catch (e: Exception) {
+            flogError { "Failed to launch permission request activity: ${e.message}" }
+            // Fallback to showing settings toast
+            appContext.showShortToast("🎤 Please enable microphone in Settings → Apps → FlorisBoard → Permissions")
+        }
+    }
+    
+    /**
+     * Checks if the microphone might be busy (basic heuristic).
+     */
+    private fun isMicrophoneBusy(): Boolean {
+        // Try to create a test MediaRecorder to see if mic is available
+        return try {
+            val testRecorder = MediaRecorder()
+            testRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            testRecorder.release()
+            false // If we got here, mic is available
+        } catch (e: Exception) {
+            flogInfo { "Microphone availability test failed: ${e.message}" }
+            true // Mic might be busy
+        }
+    }
+
+    /**
+     * Simple data class for voice response.
+     */
+    private data class VoiceResponse(
+        val success: Boolean,
+        val transcription: String?,
+        val error: String?
+    )
+
+    /**
+     * Data class to hold voice context information for backend processing.
+     */
+    private data class VoiceContextData(
+        val textBeforeCursor: String,
+        val textAfterCursor: String,
+        val selectedText: String,
+        val cursorPosition: Int,
+        val packageName: String,
+        val fieldType: String?,
+        val fieldHint: String?,
+        val fieldLabel: String?,
+        val isPasswordField: Boolean,
+        val isRichEditor: Boolean,
+        val keyboardMode: String,
+        val inputShiftState: String,
+        val locale: String,
+        val contentMimeTypes: List<String>?,
+        val imeAction: String,
+        val flagNoEnterAction: Boolean,
+        val flagNoPersonalizedLearning: Boolean
+    )
 }

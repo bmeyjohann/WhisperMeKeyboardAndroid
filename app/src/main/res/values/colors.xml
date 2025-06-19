@@ -1,26 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#4CAF50</color><!-- Green 500 -->
-    <color name="colorPrimaryDark">#388E3C</color><!-- Green 700 -->
-    <color name="colorAccent">#FF9800</color><!-- Orange 500 -->
-    <color name="colorAccentDark">#F57C00</color><!-- Orange 700 -->
+    <!-- Core Whisper Brand Colors -->
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+    <color name="colorPrimary">#0283C7</color>
+    <color name="light_gray">#F5F5F5</color>
+    <color name="dark_gray">#333333</color>
+    
+    <!-- System colors -->
+    <color name="splashscreen_background">#ffffff</color>
+    <color name="iconBackground">#ffffff</color>
+    <color name="colorPrimaryDark">#0283C7</color>
+    <color name="colorOnPrimary">#ffffff</color>
+    <color name="colorAccent">#0283C7</color>
+    <color name="colorAccentDark">#0264A0</color>
+    
+    <!-- Primary variants -->
+    <color name="primary_200">#87CEEB</color>
+    <color name="primary_500">#0283C7</color>
+    <color name="primary_700">#0264A0</color>
+    
+    <!-- Secondary colors -->
+    <color name="secondary_200">#F5F5F5</color>
+    <color name="secondary_700">#333333</color>
 
-    <color name="colorSuccess">@color/colorPrimary</color><!-- Green 500 -->
-    <color name="textColorSuccess">#FFFFFF</color><!-- White -->
-    <color name="colorWarning">#FFFF00</color><!-- Yellow A200 -->
-    <color name="textColorWarning">#000000</color><!-- Black -->
-    <color name="colorError">#B00020</color><!-- Red 1000? -->
-    <color name="textColorError">#FFFFFF</color><!-- White -->
+    <color name="colorSuccess">@color/colorPrimary</color>
+    <color name="textColorSuccess">#FFFFFF</color>
+    <color name="colorWarning">#FFFF00</color>
+    <color name="textColorWarning">#000000</color>
+    <color name="colorError">#B00020</color>
+    <color name="textColorError">#FFFFFF</color>
 
-    <color name="ic_app_icon_background">#3D3E42</color>
+    <color name="ic_app_icon_background">#0283C7</color>
     <color name="ic_app_icon_stable_background">@color/ic_app_icon_background</color>
     <color name="ic_app_icon_beta_background">@color/ic_app_icon_background</color>
     <color name="ic_app_icon_debug_background">@color/ic_app_icon_background</color>
 
-    <color name="cardViewBackgroundColor">#FFFFFF</color><!-- White -->
-    <color name="navigationBarColor">#000000</color><!-- Black -->
-    <color name="toolbarForegroundColor">#000000</color><!-- Black -->
-    <color name="windowBackground">#FAFAFA</color><!-- Gray 50 -->
+    <color name="cardViewBackgroundColor">#FFFFFF</color>
+    <color name="navigationBarColor">#000000</color>
+    <color name="toolbarForegroundColor">#000000</color>
+    <color name="windowBackground">#FAFAFA</color>
 
     <color name="florisApp_windowBackground">#FFFFFFFF</color>
+    
+    <!-- Floating Action Button Colors -->
+    <color name="fab_default_color">@color/colorPrimary</color>
+    <color name="fab_error_color">#D32F2F</color>
+
+    <!-- Quick Action Icon Color -->
+    <color name="quick_action_icon_color">#FFFFFFFF</color>
 </resources>

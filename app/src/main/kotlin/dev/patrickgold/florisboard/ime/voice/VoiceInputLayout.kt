@@ -61,7 +61,8 @@ fun VoiceInputLayout(
     val keyboardManager by context.keyboardManager()
     val state by keyboardManager.activeState.collectAsState()
 
-    var isRecording by remember { mutableStateOf(false) }
+    // Use the shared recording state from KeyboardManager
+    val isRecording by keyboardManager.isVoiceRecording.collectAsState()
 
     Column(
         modifier = modifier
@@ -138,11 +139,9 @@ fun VoiceInputLayout(
                                 if (isRecording) {
                                     // Stop recording
                                     keyboardManager.inputEventDispatcher.sendDownUp(TextKeyData.VOICE_STOP_RECORDING)
-                                    isRecording = false
                                 } else {
                                     // Start recording
                                     keyboardManager.inputEventDispatcher.sendDownUp(TextKeyData.VOICE_START_RECORDING)
-                                    isRecording = true
                                 }
                             },
                             modifier = Modifier.size(72.dp),

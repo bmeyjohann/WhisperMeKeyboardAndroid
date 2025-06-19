@@ -10,6 +10,9 @@
 
     <!-- Permission needed for voice recording functionality -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    
+    <!-- Permission needed for sending voice data to backend -->
+    <uses-permission android:name="android.permission.INTERNET"/>
 
     <!-- Android 11+ only: Define that FlorisBoard requests to see all apps that
           ship with an IME or Spell Check service. This is used to guide the user
@@ -130,6 +133,16 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="image/*"/>
             </intent-filter>
+        </activity>
+
+        <!-- Voice Permission Request Activity -->
+        <activity
+            android:name="dev.patrickgold.florisboard.ime.voice.VoicePermissionActivity"
+            android:theme="@style/FlorisAppTheme.Transparent"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTask">
         </activity>
 
         <!-- Clipboard Media File Provider -->

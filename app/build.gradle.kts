@@ -61,7 +61,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "dev.patrickgold.florisboard"
+        applicationId = "com.whisperit.keyboard"
         minSdk = projectMinSdk.toInt()
         targetSdk = projectTargetSdk.toInt()
         versionCode = projectVersionCode.toInt()
@@ -113,10 +113,10 @@ android {
             isDebuggable = true
             isJniDebuggable = false
 
-            resValue("mipmap", "floris_app_icon", "@mipmap/ic_app_icon_debug")
-            resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_app_icon_debug_round")
-            resValue("drawable", "floris_app_icon_foreground", "@drawable/ic_app_icon_debug_foreground")
-            resValue("string", "floris_app_name", "FlorisBoard Debug")
+            resValue("mipmap", "floris_app_icon", "@mipmap/ic_launcher")
+            resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_launcher_round")
+            resValue("drawable", "floris_app_icon_foreground", "@mipmap/ic_launcher_foreground")
+            resValue("string", "floris_app_name", "WhisperIt Debug")
         }
 
         create("beta") {
@@ -127,10 +127,10 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
 
-            resValue("mipmap", "floris_app_icon", "@mipmap/ic_app_icon_beta")
-            resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_app_icon_beta_round")
-            resValue("drawable", "floris_app_icon_foreground", "@drawable/ic_app_icon_beta_foreground")
-            resValue("string", "floris_app_name", "FlorisBoard Beta")
+            resValue("mipmap", "floris_app_icon", "@mipmap/ic_launcher")
+            resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_launcher_round")
+            resValue("drawable", "floris_app_icon_foreground", "@mipmap/ic_launcher_foreground")
+            resValue("string", "floris_app_name", "WhisperIt Beta")
         }
 
         named("release") {
@@ -140,9 +140,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
 
-            resValue("mipmap", "floris_app_icon", "@mipmap/ic_app_icon_stable")
-            resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_app_icon_stable_round")
-            resValue("drawable", "floris_app_icon_foreground", "@drawable/ic_app_icon_stable_foreground")
+            resValue("mipmap", "floris_app_icon", "@mipmap/ic_launcher")
+            resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_launcher_round")
+            resValue("drawable", "floris_app_icon_foreground", "@mipmap/ic_launcher_foreground")
             resValue("string", "floris_app_name", "@string/app_name")
         }
 

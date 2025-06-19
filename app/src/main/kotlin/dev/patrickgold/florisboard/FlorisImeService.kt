@@ -398,6 +398,9 @@ class FlorisImeService : LifecycleInputMethodService() {
         } else {
             flogInfo(LogTopic.IMS_EVENTS)
         }
+        
+        // Check if we have pending voice input after permission grant
+        keyboardManager.checkPendingVoiceInput()
         isWindowShown = true
         themeManager.updateActiveTheme()
         inputFeedbackController.updateSystemPrefsState()
