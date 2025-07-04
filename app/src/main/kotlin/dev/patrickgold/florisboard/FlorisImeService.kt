@@ -101,6 +101,7 @@ import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickActionsEditorPa
 import dev.patrickgold.florisboard.ime.text.TextInputLayout
 import dev.patrickgold.florisboard.ime.theme.FlorisImeTheme
 import dev.patrickgold.florisboard.ime.voice.VoiceInputLayout
+import dev.patrickgold.florisboard.ime.voice.VoiceRecordingLayout
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.ime.theme.WallpaperChangeReceiver
 import dev.patrickgold.florisboard.lib.compose.ProvideLocalizedResources
@@ -648,10 +649,11 @@ class FlorisImeService : LifecycleInputMethodService() {
                                 .wrapContentHeight(),
                         ) {
                             when (state.imeUiMode) {
-                                ImeUiMode.TEXT -> TextInputLayout()
-                                ImeUiMode.MEDIA -> MediaInputLayout()
-                                ImeUiMode.CLIPBOARD -> ClipboardInputLayout()
-                                ImeUiMode.VOICE -> VoiceInputLayout()
+                                            ImeUiMode.TEXT -> TextInputLayout()
+            ImeUiMode.MEDIA -> MediaInputLayout()
+            ImeUiMode.CLIPBOARD -> ClipboardInputLayout()
+            ImeUiMode.VOICE -> VoiceInputLayout()
+            ImeUiMode.VOICE_RECORDING -> VoiceRecordingLayout()
                             }
                         }
                     }

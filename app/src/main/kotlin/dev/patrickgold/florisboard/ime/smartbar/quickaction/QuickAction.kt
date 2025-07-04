@@ -42,12 +42,37 @@ sealed class QuickAction {
     data class InsertKey(val data: KeyData) : QuickAction() {
         override fun onPointerDown(context: Context) {
             val keyboardManager by context.keyboardManager()
-            keyboardManager.inputEventDispatcher.sendDown(data)
+            
+            // Special handling for voice input - don't send regular key events
+            if (data.code == KeyCode.VOICE_INPUT) {
+                // For voice input, we handle everything in onPointerUp to toggle recording state
+                android.util.Log.d("VoiceAction", "onPointerDown: Voice input detected")
+                return
+            } else {
+                keyboardManager.inputEventDispatcher.sendDown(data)
+            }
         }
 
         override fun onPointerUp(context: Context) {
             val keyboardManager by context.keyboardManager()
-            keyboardManager.inputEventDispatcher.sendUp(data)
+            
+            // Special handling for voice input - directly control recording instead of UI mode
+            if (data.code == KeyCode.VOICE_INPUT) {
+                val isRecording = keyboardManager.isVoiceRecording.value
+                android.util.Log.d("VoiceAction", "onPointerUp: Voice input clicked, isRecording=$isRecording")
+                if (isRecording) {
+                    // Stop recording
+                    android.util.Log.d("VoiceAction", "Sending VOICE_STOP_RECORDING")
+                    keyboardManager.inputEventDispatcher.sendDownUp(TextKeyData.VOICE_STOP_RECORDING)
+                } else {
+                    // Start recording
+                    android.util.Log.d("VoiceAction", "Sending VOICE_START_RECORDING")
+                    keyboardManager.inputEventDispatcher.sendDownUp(TextKeyData.VOICE_START_RECORDING)
+                }
+            } else {
+                keyboardManager.inputEventDispatcher.sendUp(data)
+            }
+            
             if (!keyboardManager.inputEventDispatcher.isRepeatable(data) &&
                 data.code != KeyCode.TOGGLE_ACTIONS_OVERFLOW && data.code != KeyCode.CLIPBOARD_SELECT_ALL) {
                 keyboardManager.activeState.isActionsOverflowVisible = false
@@ -56,7 +81,14 @@ sealed class QuickAction {
 
         override fun onPointerCancel(context: Context) {
             val keyboardManager by context.keyboardManager()
-            keyboardManager.inputEventDispatcher.sendCancel(data)
+            
+            // Special handling for voice input
+            if (data.code == KeyCode.VOICE_INPUT) {
+                // For voice input, don't send cancel events
+                return
+            } else {
+                keyboardManager.inputEventDispatcher.sendCancel(data)
+            }
         }
     }
 

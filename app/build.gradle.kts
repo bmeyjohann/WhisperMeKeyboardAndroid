@@ -119,6 +119,23 @@ android {
             resValue("string", "floris_app_name", "WhisperIt Debug")
         }
 
+        create("releaseTest") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+
+            isDebuggable = false
+            isJniDebuggable = false
+
+            isMinifyEnabled = true
+            isShrinkResources = true
+
+            resValue("mipmap", "floris_app_icon", "@mipmap/ic_launcher")
+            resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_launcher_round")
+            resValue("drawable", "floris_app_icon_foreground", "@mipmap/ic_launcher_foreground")
+            resValue("string", "floris_app_name", "WhisperIt Release Test")
+        }
+
         create("beta") {
             applicationIdSuffix = ".beta"
             versionNameSuffix = projectVersionNameSuffix

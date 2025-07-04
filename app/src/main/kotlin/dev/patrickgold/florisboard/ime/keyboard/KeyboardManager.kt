@@ -113,10 +113,12 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     // Voice recording state
     private val _isVoiceRecording = MutableStateFlow(false)
     val isVoiceRecording = _isVoiceRecording.asStateFlow()
+    private val _isVoiceProcessing = MutableStateFlow(false)
+    val isVoiceProcessing = _isVoiceProcessing.asStateFlow()
     private var voiceRecordingFile: File? = null
     private var mediaRecorder: MediaRecorder? = null
-    private var isVoiceProcessing = false
     private var wasPendingVoiceInput = false
+    private var previousUiModeBeforeVoice: ImeUiMode? = null
 
     private val activeEvaluatorGuard = Mutex(locked = false)
     private var activeEvaluatorVersion = AtomicInteger(0)
@@ -755,10 +757,18 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             KeyCode.IME_UI_MODE_TEXT -> activeState.imeUiMode = ImeUiMode.TEXT
             KeyCode.IME_UI_MODE_MEDIA -> activeState.imeUiMode = ImeUiMode.MEDIA
             KeyCode.IME_UI_MODE_CLIPBOARD -> activeState.imeUiMode = ImeUiMode.CLIPBOARD
-            KeyCode.IME_UI_MODE_VOICE -> activeState.imeUiMode = ImeUiMode.VOICE
-            KeyCode.VOICE_INPUT -> activeState.imeUiMode = ImeUiMode.VOICE
-            KeyCode.VOICE_START_RECORDING -> startVoiceRecording()
-            KeyCode.VOICE_STOP_RECORDING -> stopVoiceRecording()
+            KeyCode.IME_UI_MODE_VOICE -> { /* Disabled - voice input now works directly from smartbar */ }
+            KeyCode.VOICE_INPUT -> { 
+                android.util.Log.d("KeyboardManager", "VOICE_INPUT key event received (should be handled in QuickAction)")
+            }
+            KeyCode.VOICE_START_RECORDING -> {
+                android.util.Log.d("KeyboardManager", "VOICE_START_RECORDING key event received")
+                startVoiceRecording()
+            }
+            KeyCode.VOICE_STOP_RECORDING -> {
+                android.util.Log.d("KeyboardManager", "VOICE_STOP_RECORDING key event received")
+                stopVoiceRecording()
+            }
             KeyCode.KANA_SWITCHER -> handleKanaSwitch()
             KeyCode.KANA_HIRA -> handleKanaHira()
             KeyCode.KANA_KATA -> handleKanaKata()
@@ -1058,8 +1068,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      * Starts voice recording and gathers context information.
      */
     private fun startVoiceRecording() {
+        android.util.Log.d("KeyboardManager", "startVoiceRecording() called")
         if (_isVoiceRecording.value) {
             flogInfo { "Voice recording already in progress" }
+            android.util.Log.d("KeyboardManager", "Voice recording already in progress")
             return
         }
 
@@ -1162,21 +1174,32 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             
             _isVoiceRecording.value = true
             
+            // Switch to voice recording layout
+            previousUiModeBeforeVoice = activeState.imeUiMode
+            activeState.imeUiMode = ImeUiMode.VOICE_RECORDING
+            
             flogInfo { "Voice recording started successfully" }
             flogInfo { "Output file: ${voiceRecordingFile?.absolutePath}" }
+            flogInfo { "Switched from ${previousUiModeBeforeVoice} to VOICE_RECORDING mode" }
             
             // Gather context for when we stop recording
             val voiceContext = buildVoiceContext(editorInfo, editorContent, inputConnection)
             flogInfo { "Context gathered: ${voiceContext.packageName}, field: ${voiceContext.fieldType}" }
             
-            // Show user feedback
-            appContext.showShortToast("🎤 Recording started...")
+            // Note: Removed toast to avoid occluding text input - recording state is shown in button
             
         } catch (e: SecurityException) {
             flogError { "Permission denied for voice recording: ${e.message}" }
             _isVoiceRecording.value = false
             voiceRecordingFile = null
             mediaRecorder = null
+            
+            // Restore previous UI mode on error
+            previousUiModeBeforeVoice?.let { previousMode ->
+                activeState.imeUiMode = previousMode
+                previousUiModeBeforeVoice = null
+            }
+            
             appContext.showShortToast("❌ Microphone permission required")
         } catch (e: Exception) {
             flogError { "Failed to start voice recording: ${e.message}" }
@@ -1185,6 +1208,13 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             _isVoiceRecording.value = false
             voiceRecordingFile = null
             mediaRecorder = null
+            
+            // Restore previous UI mode on error
+            previousUiModeBeforeVoice?.let { previousMode ->
+                activeState.imeUiMode = previousMode
+                previousUiModeBeforeVoice = null
+            }
+            
             appContext.showShortToast("❌ Recording failed: ${e.message}")
         }
     }
@@ -1215,8 +1245,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             mediaRecorder = null
             _isVoiceRecording.value = false
             
-            // Show user feedback
-            appContext.showShortToast("🔄 Processing audio...")
+            // Note: Removed toast to avoid occluding text input - processing state is shown in button
             
             // Gather context information for the backend
             val voiceContext = buildVoiceContext(editorInfo, editorContent, inputConnection)
@@ -1231,19 +1260,19 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             voiceRecordingFile?.let { audioFile ->
                 if (audioFile.exists() && audioFile.length() > 0) {
                     flogInfo { "Audio file is valid, starting processing..." }
-                    isVoiceProcessing = true
+                    _isVoiceProcessing.value = true
                     scope.launch {
                         processVoiceRecording(audioFile, voiceContext)
                     }
                 } else {
                     flogError { "Audio file is invalid: exists=${audioFile.exists()}, size=${audioFile.length()}" }
                     appContext.showShortToast("❌ No audio recorded")
-                    isVoiceProcessing = false
+                    _isVoiceProcessing.value = false
                 }
             } ?: run {
                 flogError { "No audio file to process" }
                 appContext.showShortToast("❌ No audio file found")
-                isVoiceProcessing = false
+                _isVoiceProcessing.value = false
             }
             
         } catch (e: RuntimeException) {
@@ -1253,16 +1282,30 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             _isVoiceRecording.value = false
             mediaRecorder?.release()
             mediaRecorder = null
+            
+            // Restore previous UI mode on error
+            previousUiModeBeforeVoice?.let { previousMode ->
+                activeState.imeUiMode = previousMode
+                previousUiModeBeforeVoice = null
+            }
+            
             appContext.showShortToast("❌ Failed to stop recording")
         } catch (e: Exception) {
             flogError { "Failed to stop voice recording: ${e.message}" }
             flogError { "Exception type: ${e.javaClass.simpleName}" }
             e.printStackTrace()
             _isVoiceRecording.value = false
+            
+            // Restore previous UI mode on error
+            previousUiModeBeforeVoice?.let { previousMode ->
+                activeState.imeUiMode = previousMode
+                previousUiModeBeforeVoice = null
+            }
+            
             appContext.showShortToast("❌ Recording error: ${e.message}")
         } finally {
             // Clean up will happen in processVoiceRecording or here if failed
-            if (!isVoiceProcessing) {
+            if (!_isVoiceProcessing.value) {
                 voiceRecordingFile?.delete()
                 voiceRecordingFile = null
             }
@@ -1277,18 +1320,23 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         editorContent: EditorContent,
         inputConnection: InputConnection?
     ): VoiceContextData {
+        // Get text parts from input connection first (more reliable), fallback to editor content
         val textBeforeCursor = inputConnection?.getTextBeforeCursor(500, 0)?.toString() 
             ?: editorContent.textBeforeSelection
         val textAfterCursor = inputConnection?.getTextAfterCursor(500, 0)?.toString() 
             ?: editorContent.textAfterSelection
         val selectedText = inputConnection?.getSelectedText(0)?.toString() 
             ?: editorContent.selectedText
-
-        return VoiceContextData(
+        
+        // Build complete field text - this is the authoritative source
+        val fullText = textBeforeCursor + selectedText + textAfterCursor
+        
+        val context = VoiceContextData(
             textBeforeCursor = textBeforeCursor,
             textAfterCursor = textAfterCursor,
             selectedText = selectedText,
             cursorPosition = editorContent.selection.start,
+            fullText = fullText,
             packageName = editorInfo.packageName ?: "unknown",
             fieldType = determineFieldType(editorInfo),
             fieldHint = editorInfo.base.hintText?.toString(),
@@ -1303,6 +1351,30 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             flagNoEnterAction = editorInfo.imeOptions.flagNoEnterAction,
             flagNoPersonalizedLearning = editorInfo.imeOptions.flagNoPersonalizedLearning
         )
+        
+        // Log context for verification
+        flogInfo { "=== VOICE CONTEXT GATHERED ===" }
+        flogInfo { "Package: ${context.packageName}" }
+        flogInfo { "Field type: ${context.fieldType}" }
+        flogInfo { "Field hint: '${context.fieldHint}'" }
+        flogInfo { "Full text (${fullText.length} chars): '${fullText}'" }
+        flogInfo { "Text before cursor (${textBeforeCursor.length} chars): '${textBeforeCursor.takeLast(50)}'" }
+        flogInfo { "Selected text (${selectedText.length} chars): '${selectedText}'" }
+        flogInfo { "Text after cursor (${textAfterCursor.length} chars): '${textAfterCursor.take(50)}'" }
+        flogInfo { "Cursor position: ${context.cursorPosition}" }
+        flogInfo { "Is password field: ${context.isPasswordField}" }
+        
+        // Verify text reconstruction
+        val reconstructed = textBeforeCursor + selectedText + textAfterCursor
+        if (reconstructed != fullText) {
+            flogError { "Text reconstruction mismatch!" }
+            flogError { "Expected: '$fullText'" }
+            flogError { "Got: '$reconstructed'" }
+        } else {
+            flogInfo { "✅ Text reconstruction verified" }
+        }
+        
+        return context
     }
 
     /**
@@ -1399,9 +1471,16 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 flogError { "Failed to delete temporary file: ${e.message}" }
             }
             
-            // Reset processing state
-            isVoiceProcessing = false
+            // Reset processing state and return to previous UI mode
+            _isVoiceProcessing.value = false
             voiceRecordingFile = null
+            
+            // Return to previous UI mode
+            previousUiModeBeforeVoice?.let { previousMode ->
+                activeState.imeUiMode = previousMode
+                flogInfo { "Returned to previous UI mode: $previousMode" }
+                previousUiModeBeforeVoice = null
+            }
         }
     }
     
@@ -1464,21 +1543,22 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                     VoiceResponse(
                         success = false,
                         transcription = null,
+                        finalText = null,
                         error = "Server error: $responseCode - ${responseBody.take(200)}"
                     )
                 }
                 
             } catch (e: java.net.SocketTimeoutException) {
                 flogError { "Request timeout: ${e.message}" }
-                VoiceResponse(success = false, transcription = null, error = "Request timeout - check your internet connection")
+                VoiceResponse(success = false, transcription = null, finalText = null, error = "Request timeout - check your internet connection")
             } catch (e: java.net.UnknownHostException) {
                 flogError { "Network error: ${e.message}" }
-                VoiceResponse(success = false, transcription = null, error = "Network error - check your internet connection")
+                VoiceResponse(success = false, transcription = null, finalText = null, error = "Network error - check your internet connection")
             } catch (e: Exception) {
                 flogError { "HTTP request failed: ${e.message}" }
                 flogError { "Exception type: ${e.javaClass.simpleName}" }
                 e.printStackTrace()
-                VoiceResponse(success = false, transcription = null, error = "Network request failed: ${e.message}")
+                VoiceResponse(success = false, transcription = null, finalText = null, error = "Network request failed: ${e.message}")
             }
         }
     }
@@ -1504,6 +1584,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                     "textAfterCursor": "${context.textAfterCursor.escapeJson()}",
                     "selectedText": "${context.selectedText.escapeJson()}",
                     "cursorPosition": ${context.cursorPosition},
+                    "fullText": "${context.fullText.escapeJson()}",
                     "packageName": "${context.packageName.escapeJson()}",
                     "fieldType": "${context.fieldType?.escapeJson() ?: ""}",
                     "fieldHint": "${context.fieldHint?.escapeJson() ?: ""}",
@@ -1529,53 +1610,52 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      */
     private fun parseVoiceResponse(responseBody: String): VoiceResponse {
         return try {
-            flogInfo { "Parsing response..." }
+            flogInfo { "=== PARSING BACKEND RESPONSE ===" }
+            flogInfo { "Response (${responseBody.length} chars): ${responseBody.take(200)}..." }
             
-            // Simple JSON parsing for the complex backend response structure
+            // Check if request was successful
             val successPattern = """"success":\s*true""".toRegex()
             val errorPattern = """"error":\s*"([^"]+)"""".toRegex()
             
-            if (successPattern.containsMatchIn(responseBody)) {
-                // Try to extract transcription text
-                val transcriptionTextPattern = """"transcription":\s*\{[^}]*"text":\s*"([^"]+)"""".toRegex()
-                val directTextPattern = """"text":\s*"([^"]+)"""".toRegex()
-                
-                val transcription = transcriptionTextPattern.find(responseBody)?.groupValues?.get(1)
-                    ?: directTextPattern.find(responseBody)?.groupValues?.get(1)
-                    ?: ""
-                
-                // Check if there's an agent response with actions
-                val agentResponsePattern = """"agentResponse":\s*\{""".toRegex()
-                val actionPattern = """"action":\s*"([^"]+)"""".toRegex()
-                val textToInsertPattern = """"textToInsert":\s*"([^"]+)"""".toRegex()
-                
-                if (agentResponsePattern.containsMatchIn(responseBody)) {
-                    flogInfo { "Found agent response in backend response" }
-                    
-                    val action = actionPattern.find(responseBody)?.groupValues?.get(1)
-                    val textToInsert = textToInsertPattern.find(responseBody)?.groupValues?.get(1)
-                    
-                    flogInfo { "Agent action: '$action', text: '$textToInsert'" }
-                    
-                    // For now, we'll use the textToInsert or fall back to transcription
-                    val finalText = textToInsert ?: transcription
-                    flogInfo { "Using final text: '$finalText'" }
-                    
-                    VoiceResponse(success = true, transcription = finalText, error = null)
-                } else {
-                    flogInfo { "Using direct transcription: '$transcription'" }
-                    VoiceResponse(success = true, transcription = transcription, error = null)
-                }
-            } else {
+            if (!successPattern.containsMatchIn(responseBody)) {
                 val error = errorPattern.find(responseBody)?.groupValues?.get(1) ?: "Unknown backend error"
-                flogError { "Backend returned error: $error" }
-                VoiceResponse(success = false, transcription = null, error = error)
+                flogError { "Backend error: $error" }
+                return VoiceResponse(success = false, transcription = null, finalText = null, error = error)
             }
+            
+            // Extract transcription text
+            val transcriptionTextPattern = """"transcription":\s*\{[^}]*"text":\s*"([^"]+)"""".toRegex()
+            val transcription = transcriptionTextPattern.find(responseBody)?.groupValues?.get(1) ?: ""
+            
+            // Extract final text (new simplified format)
+            val finalTextPattern = """"finalText":\s*"([^"]*(?:\\.[^"]*)*)"""".toRegex()
+            val finalText = finalTextPattern.find(responseBody)?.groupValues?.get(1)?.let { text ->
+                // Unescape JSON
+                text.replace("\\\"", "\"")
+                    .replace("\\\\", "\\")
+                    .replace("\\n", "\n")
+                    .replace("\\r", "\r")
+                    .replace("\\t", "\t")
+            }
+            
+            flogInfo { "Transcription: '$transcription'" }
+            flogInfo { "Final text (${finalText?.length ?: 0} chars): '$finalText'" }
+            
+            return VoiceResponse(
+                success = true,
+                transcription = transcription,
+                finalText = finalText,
+                error = null
+            )
+            
         } catch (e: Exception) {
             flogError { "Failed to parse response: ${e.message}" }
-            VoiceResponse(success = false, transcription = null, error = "Failed to parse response: ${e.message}")
+            e.printStackTrace()
+            VoiceResponse(success = false, transcription = null, finalText = null, error = "Failed to parse response: ${e.message}")
         }
     }
+    
+
     
     /**
      * Processes the response from the backend.
@@ -1584,34 +1664,73 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         flogInfo { "=== PROCESSING VOICE RESPONSE ===" }
         flogInfo { "Success: ${response.success}" }
         flogInfo { "Transcription: '${response.transcription}'" }
+        flogInfo { "Final text: '${response.finalText}'" }
         flogInfo { "Error: ${response.error}" }
         
-        if (response.success) {
-            response.transcription?.let { text ->
-                if (text.isNotBlank()) {
-                    flogInfo { "Inserting transcribed text: '$text'" }
-                    editorInstance.commitText(text)
-                    appContext.showShortToast("✅ Voice input processed")
-                } else {
-                    flogInfo { "Transcription is empty" }
-                    appContext.showShortToast("🔇 No speech detected")
-                }
-            } ?: run {
-                flogError { "Successful response but no transcription text" }
-                appContext.showShortToast("❌ Empty response from server")
-            }
-        } else {
+        if (!response.success) {
             val errorMessage = response.error ?: "Unknown error"
             flogError { "Voice processing failed: $errorMessage" }
             handleVoiceError(errorMessage)
+            return
+        }
+        
+        try {
+            val finalText = response.finalText
+            
+            if (finalText != null) {
+                flogInfo { "Replacing field content with final text (${finalText.length} chars)" }
+                
+                // Get current editor content for comparison
+                val currentContent = editorInstance.activeContent
+                val currentText = currentContent.textBeforeSelection + currentContent.selectedText + currentContent.textAfterSelection
+                
+                flogInfo { "Current text: '$currentText'" }
+                flogInfo { "New text: '$finalText'" }
+                
+                if (finalText != currentText) {
+                    // Select all current text and replace it with the final text
+                    editorInstance.performClipboardSelectAll()
+                    editorInstance.commitText(finalText)
+                    flogInfo { "✅ Text replacement completed" }
+                } else {
+                    flogInfo { "ℹ️ Final text same as current - no change needed" }
+                }
+                
+            } else {
+                flogError { "No final text in successful response" }
+                // Fallback to direct transcription if available
+                response.transcription?.let { text ->
+                    if (text.isNotBlank()) {
+                        flogInfo { "Fallback: Using direct transcription" }
+                        editorInstance.commitText(text)
+                    } else {
+                        appContext.showShortToast("🔇 No speech detected")
+                    }
+                } ?: run {
+                    appContext.showShortToast("❌ Empty response from server")
+                }
+            }
+        } catch (e: Exception) {
+            flogError { "Failed to process voice response: ${e.message}" }
+            e.printStackTrace()
+            appContext.showShortToast("❌ Failed to process response")
         }
     }
+    
+
     
     /**
      * Handles voice processing errors.
      */
     private fun handleVoiceError(error: String) {
         flogError { "Voice processing error: $error" }
+        
+        // Restore previous UI mode on error
+        previousUiModeBeforeVoice?.let { previousMode ->
+            activeState.imeUiMode = previousMode
+            flogInfo { "Restored UI mode to $previousMode due to voice error" }
+            previousUiModeBeforeVoice = null
+        }
         
         // Show user-friendly error message
         val userMessage = when {
@@ -1698,6 +1817,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     private data class VoiceResponse(
         val success: Boolean,
         val transcription: String?,
+        val finalText: String?,
         val error: String?
     )
 
@@ -1709,6 +1829,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         val textAfterCursor: String,
         val selectedText: String,
         val cursorPosition: Int,
+        val fullText: String, // Complete field text for pattern matching
         val packageName: String,
         val fieldType: String?,
         val fieldHint: String?,

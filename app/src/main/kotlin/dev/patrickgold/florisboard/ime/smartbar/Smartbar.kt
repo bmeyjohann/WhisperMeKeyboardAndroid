@@ -56,9 +56,12 @@ import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.florisPreferenceModel
 import dev.patrickgold.florisboard.ime.keyboard.FlorisImeSizing
 import dev.patrickgold.florisboard.ime.nlp.NlpInlineAutofill
+import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickAction
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickActionButton
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickActionsRow
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.ToggleOverflowPanelAction
+import dev.patrickgold.florisboard.ime.smartbar.quickaction.VoiceActionButton
+import dev.patrickgold.florisboard.ime.text.key.KeyCode
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.keyboardManager
 import dev.patrickgold.florisboard.lib.compose.horizontalTween
@@ -289,11 +292,20 @@ private fun SmartbarMainRow(modifier: Modifier = Modifier) {
         }
 
         if (action != null) {
-            QuickActionButton(
-                modifier = Modifier.padding(horizontal = 4.dp),
-                action = action,
-                evaluator = evaluator,
-            )
+            // Use custom voice button for voice input, regular button for others
+            if (action is QuickAction.InsertKey && action.data.code == KeyCode.VOICE_INPUT) {
+                VoiceActionButton(
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                    action = action,
+                    evaluator = evaluator,
+                )
+            } else {
+                QuickActionButton(
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                    action = action,
+                    evaluator = evaluator,
+                )
+            }
         } else {
             Spacer(
                 modifier = Modifier
