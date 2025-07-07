@@ -1488,7 +1488,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      * Sends voice data to the backend for processing.
      */
     private suspend fun sendVoiceToBackend(base64Audio: String, context: VoiceContextData): VoiceResponse {
-        val serverUrl = "https://process-voice.benjamin-meyjohann.workers.dev"
+        val serverUrl = "https://process-voice.whisperit.workers.dev"
         
         return withContext(Dispatchers.IO) {
             try {
