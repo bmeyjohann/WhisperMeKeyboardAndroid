@@ -30,6 +30,21 @@ import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material3.Text
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.weight
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
+import androidx.compose.runtime.remember
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -38,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.LocalNavController
 import dev.patrickgold.florisboard.app.Routes
+import dev.patrickgold.florisboard.app.auth.Auth0Manager
+import kotlinx.coroutines.flow.collectAsState
 import dev.patrickgold.florisboard.lib.compose.FlorisErrorCard
 import dev.patrickgold.florisboard.lib.compose.FlorisScreen
 import dev.patrickgold.florisboard.lib.compose.FlorisWarningCard
@@ -57,6 +74,11 @@ fun HomeScreen() = FlorisScreen {
 
     content {
         val isCollapsed by prefs.internal.homeIsBetaToolboxCollapsed.observeAsState()
+        
+        // Auth0 user info
+        val authManager = remember { Auth0Manager.getInstance(context) }
+        val isAuthenticated by authManager.isAuthenticated.collectAsState()
+        val userProfile by authManager.userProfile.collectAsState()
 
         val isFlorisBoardEnabled by InputMethodUtils.observeIsFlorisboardEnabled(foregroundOnly = true)
         val isFlorisBoardSelected by InputMethodUtils.observeIsFlorisboardSelected(foregroundOnly = true)
@@ -74,6 +96,45 @@ fun HomeScreen() = FlorisScreen {
                 text = stringRes(R.string.settings__home__ime_not_selected),
                 onClick = { InputMethodUtils.showImePicker(context) },
             )
+        }
+        
+        // User Account Section
+        if (isAuthenticated && userProfile != null) {
+            Card(
+                modifier = Modifier.padding(8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Signed in as",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = userProfile?.getName() ?: userProfile?.getEmail() ?: "User",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            userProfile?.getEmail()?.let { email ->
+                                if (userProfile?.getName() != null) {
+                                    Text(
+                                        text = email,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         /*Card(modifier = Modifier.padding(8.dp)) {
@@ -161,5 +222,25 @@ fun HomeScreen() = FlorisScreen {
             title = stringRes(R.string.about__title),
             onClick = { navController.navigate(Routes.Settings.About) },
         )
+        
+        // Logout option - only show if authenticated
+        if (isAuthenticated) {
+            Preference(
+                icon = Icons.Default.Logout,
+                title = "Sign Out",
+                summary = "Sign out of your WhisperMe account",
+                onClick = {
+                    if (context is ComponentActivity) {
+                        authManager.logout(context) { success, error ->
+                            if (success) {
+                                navController.navigate(Routes.Auth.Login) {
+                                    popUpTo(Routes.Settings.Home) { inclusive = true }
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+        }
     }
 }

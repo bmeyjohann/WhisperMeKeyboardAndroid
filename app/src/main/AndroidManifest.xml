@@ -145,6 +145,19 @@
             android:launchMode="singleTask">
         </activity>
 
+        <!-- Auth0 Redirect Activity -->
+        <activity
+            android:name="com.auth0.android.provider.RedirectActivity"
+            android:exported="true">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${auth0Scheme}"
+                    android:host="@string/com_auth0_domain" />
+            </intent-filter>
+        </activity>
+
         <!-- Clipboard Media File Provider -->
         <provider
             android:name="dev.patrickgold.florisboard.ime.clipboard.provider.ClipboardMediaProvider"

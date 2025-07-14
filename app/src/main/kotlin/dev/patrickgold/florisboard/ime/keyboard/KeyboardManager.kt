@@ -1488,7 +1488,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      * Sends voice data to the backend for processing.
      */
     private suspend fun sendVoiceToBackend(base64Audio: String, context: VoiceContextData): VoiceResponse {
-        val serverUrl = "https://process-voice.whisperit.workers.dev"
+        val serverUrl = "https://process-voice.whisperme.app"
         
         return withContext(Dispatchers.IO) {
             try {
@@ -1509,7 +1509,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 connection.requestMethod = "POST"
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.setRequestProperty("Accept", "application/json")
-                connection.setRequestProperty("User-Agent", "WhisperIt-Android/1.0")
+                connection.setRequestProperty("User-Agent", "WhisperMe-Android/1.0")
                 connection.doOutput = true
                 connection.connectTimeout = 30000 // 30 seconds
                 connection.readTimeout = 60000 // 60 seconds

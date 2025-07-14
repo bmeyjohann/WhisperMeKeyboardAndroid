@@ -73,6 +73,10 @@ import org.florisboard.lib.kotlin.curlyFormat
 
 @Suppress("FunctionName", "ConstPropertyName")
 object Routes {
+    object Auth {
+        const val Login = "auth/login"
+    }
+    
     object Setup {
         const val Screen = "setup"
     }
@@ -192,6 +196,22 @@ object Routes {
                 slideOut { IntOffset(it.width, 0) } + fadeOut()
             }
         ) {
+            composable(Auth.Login) { 
+                dev.patrickgold.florisboard.app.auth.LoginScreen(
+                    onLoginSuccess = {
+                        navController.navigate(
+                            if (navController.previousBackStackEntry?.destination?.route?.contains("setup") == true) {
+                                Setup.Screen
+                            } else {
+                                Settings.Home
+                            }
+                        ) {
+                            popUpTo(Auth.Login) { inclusive = true }
+                        }
+                    }
+                )
+            }
+            
             composable(Setup.Screen) { SetupScreen() }
 
             composableWithDeepLink(Settings.Home) { HomeScreen() }

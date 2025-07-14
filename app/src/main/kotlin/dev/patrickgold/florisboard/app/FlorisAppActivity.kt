@@ -31,8 +31,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -45,6 +47,7 @@ import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.apptheme.FlorisAppTheme
 import dev.patrickgold.florisboard.app.ext.ExtensionImportScreenType
 import dev.patrickgold.florisboard.app.setup.NotificationPermissionState
+import dev.patrickgold.florisboard.app.auth.Auth0Manager
 import dev.patrickgold.florisboard.cacheManager
 import dev.patrickgold.florisboard.lib.FlorisLocale
 import dev.patrickgold.florisboard.lib.compose.LocalPreviewFieldController
@@ -165,6 +168,10 @@ class FlorisAppActivity : ComponentActivity() {
     private fun AppContent() {
         val navController = rememberNavController()
         val previewFieldController = rememberPreviewFieldController()
+        
+        // Auth0 authentication check
+        val authManager = remember { Auth0Manager.getInstance(this@FlorisAppActivity) }
+        val isAuthenticated by authManager.isAuthenticated.collectAsState()
 
         val isImeSetUp by prefs.internal.isImeSetUp.observeAsState()
 
@@ -189,7 +196,11 @@ class FlorisAppActivity : ComponentActivity() {
                     Routes.AppNavHost(
                         modifier = Modifier.weight(1.0f),
                         navController = navController,
-                        startDestination = if (isImeSetUp) Routes.Settings.Home else Routes.Setup.Screen,
+                        startDestination = when {
+                            isAuthenticated.not() -> Routes.Auth.Login
+                            isImeSetUp.not() -> Routes.Setup.Screen
+                            else -> Routes.Settings.Home
+                        },
                     )
                     PreviewKeyboardField(previewFieldController)
                 }

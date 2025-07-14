@@ -61,7 +61,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.whisperit.keyboard"
+        applicationId = "app.whisperme.keyboard"
         minSdk = projectMinSdk.toInt()
         targetSdk = projectTargetSdk.toInt()
         versionCode = projectVersionCode.toInt()
@@ -72,6 +72,10 @@ android {
         buildConfigField("String", "BUILD_COMMIT_HASH", "\"${getGitCommitHash()}\"")
         buildConfigField("String", "FLADDONS_API_VERSION", "\"v~draft2\"")
         buildConfigField("String", "FLADDONS_STORE_URL", "\"beta.addons.florisboard.org\"")
+        
+        // Auth0 configuration
+        manifestPlaceholders["auth0Domain"] = "@string/com_auth0_domain"
+        manifestPlaceholders["auth0Scheme"] = "app.whisperme.keyboard"
 
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
@@ -116,7 +120,7 @@ android {
             resValue("mipmap", "floris_app_icon", "@mipmap/ic_launcher")
             resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_launcher_round")
             resValue("drawable", "floris_app_icon_foreground", "@mipmap/ic_launcher_foreground")
-            resValue("string", "floris_app_name", "WhisperIt Debug")
+            resValue("string", "floris_app_name", "WhisperMe Debug")
         }
 
         create("releaseTest") {
@@ -133,7 +137,7 @@ android {
             resValue("mipmap", "floris_app_icon", "@mipmap/ic_launcher")
             resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_launcher_round")
             resValue("drawable", "floris_app_icon_foreground", "@mipmap/ic_launcher_foreground")
-            resValue("string", "floris_app_name", "WhisperIt Release Test")
+            resValue("string", "floris_app_name", "WhisperMe Release Test")
         }
 
         create("beta") {
@@ -147,7 +151,7 @@ android {
             resValue("mipmap", "floris_app_icon", "@mipmap/ic_launcher")
             resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_launcher_round")
             resValue("drawable", "floris_app_icon_foreground", "@mipmap/ic_launcher_foreground")
-            resValue("string", "floris_app_name", "WhisperIt Beta")
+            resValue("string", "floris_app_name", "WhisperMe Beta")
         }
 
         named("release") {
@@ -223,6 +227,14 @@ dependencies {
     implementation(libs.patrickgold.jetpref.datastore.model)
     implementation(libs.patrickgold.jetpref.datastore.ui)
     implementation(libs.patrickgold.jetpref.material.ui)
+
+    // Auth0 Android SDK
+    implementation("com.auth0.android:auth0:2.11.0")
+    implementation("com.auth0.android:jwtdecode:2.0.2")
+    
+    // HTTP client for API requests with auth
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
     implementation(project(":lib:android"))
     implementation(project(":lib:color"))
