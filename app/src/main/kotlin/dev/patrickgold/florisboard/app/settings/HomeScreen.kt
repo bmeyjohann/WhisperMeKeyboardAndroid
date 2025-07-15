@@ -40,13 +40,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.Icon
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.remember
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -54,7 +54,6 @@ import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.LocalNavController
 import dev.patrickgold.florisboard.app.Routes
 import dev.patrickgold.florisboard.app.auth.Auth0Manager
-import kotlinx.coroutines.flow.collectAsState
 import dev.patrickgold.florisboard.lib.compose.FlorisErrorCard
 import dev.patrickgold.florisboard.lib.compose.FlorisScreen
 import dev.patrickgold.florisboard.lib.compose.FlorisWarningCard
@@ -118,12 +117,12 @@ fun HomeScreen() = FlorisScreen {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = userProfile?.getName() ?: userProfile?.getEmail() ?: "User",
+                                text = userProfile?.name ?: userProfile?.email ?: "User",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            userProfile?.getEmail()?.let { email ->
-                                if (userProfile?.getName() != null) {
+                            userProfile?.email?.let { email ->
+                                if (userProfile?.name != null) {
                                     Text(
                                         text = email,
                                         style = MaterialTheme.typography.bodySmall,

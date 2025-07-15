@@ -2,6 +2,7 @@ package dev.patrickgold.florisboard.app.auth
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,6 +18,7 @@ import com.auth0.android.result.UserProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import dev.patrickgold.florisboard.R
 
 class Auth0Manager private constructor(context: Context) {
     private val account: Auth0
@@ -33,9 +35,17 @@ class Auth0Manager private constructor(context: Context) {
     val accessToken: StateFlow<String?> = _accessToken.asStateFlow()
 
     init {
-        account = Auth0(context)
+        // Initialize Auth0 exactly like the documentation shows
+        account = Auth0(
+            context.getString(R.string.com_auth0_client_id),
+            context.getString(R.string.com_auth0_domain)
+        )
         authenticationApiClient = AuthenticationAPIClient(account)
         credentialsManager = CredentialsManager(authenticationApiClient, SharedPreferencesStorage(context))
+        
+        // Debug logging
+        Log.d("Auth0Manager", "Auth0 initialized successfully")
+        Log.d("Auth0Manager", "Using scheme: app.whisperme.keyboard")
         
         // Check if user is already authenticated
         checkAuthentication()
@@ -60,12 +70,24 @@ class Auth0Manager private constructor(context: Context) {
     }
 
     fun login(activity: ComponentActivity, callback: (Boolean, String?) -> Unit) {
+        val packageName = activity.packageName
+        val domain = activity.getString(R.string.com_auth0_domain)
+        val scheme = "app.whisperme.keyboard"
+        val expectedCallbackUrl = "$scheme://$domain/android/$packageName/callback"
+        
+        Log.d("Auth0Manager", "=== Auth0 Login Debug Info ===")
+        Log.d("Auth0Manager", "Package Name: $packageName")
+        Log.d("Auth0Manager", "Domain: $domain")
+        Log.d("Auth0Manager", "Scheme: $scheme")
+        Log.d("Auth0Manager", "Expected Callback URL: $expectedCallbackUrl")
+        Log.d("Auth0Manager", "Starting login...")
+        
         WebAuthProvider.login(account)
-            .withScheme("app.whisperme.keyboard")
-            .withScope("openid profile email offline_access")
-            .withAudience("https://whisperme-app.com/api")
+            .withScheme(scheme)
+            .withScope("openid profile email")
             .start(activity, object : Callback<Credentials, com.auth0.android.authentication.AuthenticationException> {
                 override fun onSuccess(result: Credentials) {
+                    Log.d("Auth0Manager", "Login successful!")
                     credentialsManager.saveCredentials(result)
                     _isAuthenticated.value = true
                     _accessToken.value = result.accessToken
@@ -74,6 +96,8 @@ class Auth0Manager private constructor(context: Context) {
                 }
 
                 override fun onFailure(error: com.auth0.android.authentication.AuthenticationException) {
+                    Log.e("Auth0Manager", "Login failed: ${error.message}")
+                    Log.e("Auth0Manager", "Error cause: ${error.cause}")
                     callback(false, error.message)
                 }
             })
@@ -81,6 +105,7 @@ class Auth0Manager private constructor(context: Context) {
 
     fun logout(activity: ComponentActivity, callback: (Boolean, String?) -> Unit) {
         WebAuthProvider.logout(account)
+            .withScheme("app.whisperme.keyboard")
             .start(activity, object : Callback<Void?, com.auth0.android.authentication.AuthenticationException> {
                 override fun onSuccess(result: Void?) {
                     credentialsManager.clearCredentials()
@@ -102,13 +127,19 @@ class Auth0Manager private constructor(context: Context) {
     }
 
     private fun getUserProfile(accessToken: String) {
+        Log.d("Auth0Manager", "Fetching user profile")
+        
         authenticationApiClient.userInfo(accessToken)
             .start(object : Callback<UserProfile, com.auth0.android.authentication.AuthenticationException> {
                 override fun onSuccess(result: UserProfile) {
+                    Log.d("Auth0Manager", "User profile retrieved successfully")
+                    Log.d("Auth0Manager", "User email: ${result.email}")
+                    Log.d("Auth0Manager", "User name: ${result.name}")
                     _userProfile.value = result
                 }
 
                 override fun onFailure(error: com.auth0.android.authentication.AuthenticationException) {
+                    Log.e("Auth0Manager", "Failed to get user profile: ${error.message}")
                     // Profile fetch failed, but user is still authenticated
                     _userProfile.value = null
                 }
