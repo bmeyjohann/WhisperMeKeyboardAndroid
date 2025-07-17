@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.MutableLiveData
 import dev.patrickgold.florisboard.FlorisImeService
 import dev.patrickgold.florisboard.R
+import dev.patrickgold.florisboard.app.auth.Auth0Manager
 import dev.patrickgold.florisboard.app.florisPreferenceModel
 import dev.patrickgold.florisboard.appContext
 import dev.patrickgold.florisboard.clipboardManager
@@ -1498,6 +1499,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 flogInfo { "Context: ${context.packageName} - ${context.fieldType}" }
                 flogInfo { "Text before cursor: '${context.textBeforeCursor.takeLast(100)}'" }
                 
+                // Get authentication token from Auth0Manager
+                val authManager = Auth0Manager.getInstance(appContext)
+                val authToken: String? = authManager.accessToken.value
+                
                 // Create JSON request body
                 val requestBody = buildJsonRequest(base64Audio, context)
                 flogInfo { "Request body length: ${requestBody.length} characters" }
@@ -1510,6 +1515,15 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.setRequestProperty("Accept", "application/json")
                 connection.setRequestProperty("User-Agent", "WhisperMe-Android/1.0")
+                
+                // Add authentication header if available
+                authToken?.let { token ->
+                    connection.setRequestProperty("Authorization", "Bearer $token")
+                    flogInfo { "Added authentication header" }
+                } ?: run {
+                    flogInfo { "No authentication token available - request may fail" }
+                }
+                
                 connection.doOutput = true
                 connection.connectTimeout = 30000 // 30 seconds
                 connection.readTimeout = 60000 // 60 seconds
