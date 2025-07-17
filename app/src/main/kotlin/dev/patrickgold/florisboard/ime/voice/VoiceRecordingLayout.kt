@@ -22,6 +22,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,7 +91,18 @@ fun VoiceRecordingLayout(
                 .weight(1f),
         ) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (isRecording) {
+                            Modifier.clickable {
+                                // Stop recording when clicking anywhere in the content area
+                                keyboardManager.inputEventDispatcher.sendDownUp(TextKeyData.VOICE_STOP_RECORDING)
+                            }
+                        } else {
+                            Modifier
+                        }
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(
