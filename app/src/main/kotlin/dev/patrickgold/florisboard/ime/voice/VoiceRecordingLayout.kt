@@ -22,16 +22,22 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
@@ -62,6 +68,8 @@ fun VoiceRecordingLayout(
     // Voice states
     val isRecording by keyboardManager.isVoiceRecording.collectAsState()
     val isProcessing by keyboardManager.isVoiceProcessing.collectAsState()
+    val isRetryable by keyboardManager.isVoiceRetryable.collectAsState()
+    val errorMessage by keyboardManager.voiceErrorMessage.collectAsState()
     
     // Animation for recording pulsing effect
     val infiniteTransition = rememberInfiniteTransition(label = "voice_recording_pulse")
@@ -74,6 +82,14 @@ fun VoiceRecordingLayout(
         ),
         label = "recording_pulse"
     )
+    
+    // Clean up voice state when composable is disposed
+    DisposableEffect(Unit) {
+        onDispose {
+            // This will be called when the composable is removed from composition
+            // but we rely on the keyboard lifecycle events for cleanup instead
+        }
+    }
 
     Column(
         modifier = modifier
@@ -99,6 +115,11 @@ fun VoiceRecordingLayout(
                                 // Stop recording when clicking anywhere in the content area
                                 keyboardManager.inputEventDispatcher.sendDownUp(TextKeyData.VOICE_STOP_RECORDING)
                             }
+                        } else if (isRetryable) {
+                            Modifier.clickable {
+                                // Cancel retry when clicking anywhere in the content area
+                                keyboardManager.cancelVoiceProcessing()
+                            }
                         } else {
                             Modifier
                         }
@@ -110,6 +131,52 @@ fun VoiceRecordingLayout(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     when {
+                        isRetryable -> {
+                            // Retry state - show error message and retry/cancel options
+                            SnyggText(
+                                text = errorMessage ?: "Voice processing failed",
+                                modifier = Modifier.padding(bottom = 32.dp),
+                            )
+                            
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                                modifier = Modifier.padding(vertical = 16.dp)
+                            ) {
+                                // Retry button
+                                SnyggIconButton(
+                                    elementName = FlorisImeUi.VoiceInputStopButton.elementName,
+                                    onClick = {
+                                        keyboardManager.retryVoiceProcessing()
+                                    },
+                                    modifier = Modifier.size(100.dp),
+                                ) {
+                                    SnyggIcon(
+                                        imageVector = Icons.Default.Refresh,
+                                        modifier = Modifier.size(50.dp),
+                                    )
+                                }
+                                
+                                // Cancel button
+                                SnyggIconButton(
+                                    elementName = FlorisImeUi.VoiceInputStopButton.elementName,
+                                    onClick = {
+                                        keyboardManager.cancelVoiceProcessing()
+                                    },
+                                    modifier = Modifier.size(100.dp),
+                                ) {
+                                    SnyggIcon(
+                                        imageVector = Icons.Default.Cancel,
+                                        modifier = Modifier.size(50.dp),
+                                    )
+                                }
+                            }
+                            
+                            SnyggText(
+                                text = "Tap retry to try again or cancel to return",
+                                modifier = Modifier.padding(top = 32.dp),
+                            )
+                        }
+                        
                         isProcessing -> {
                             // Processing state - show loading indicator
                             SnyggText(
@@ -154,13 +221,6 @@ fun VoiceRecordingLayout(
                             SnyggText(
                                 text = "Tap the stop button to finish recording",
                                 modifier = Modifier.padding(top = 32.dp),
-                            )
-                        }
-                        
-                        else -> {
-                            // This shouldn't happen, but just in case
-                            SnyggText(
-                                text = "Voice input ready",
                             )
                         }
                     }

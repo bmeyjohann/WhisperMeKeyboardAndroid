@@ -13,6 +13,9 @@
     
     <!-- Permission needed for sending voice data to backend -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    
+    <!-- Permission needed for checking network connectivity -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
     <!-- Android 11+ only: Define that FlorisBoard requests to see all apps that
           ship with an IME or Spell Check service. This is used to guide the user

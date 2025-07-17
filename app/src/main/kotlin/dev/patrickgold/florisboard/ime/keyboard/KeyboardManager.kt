@@ -86,6 +86,8 @@ import org.florisboard.lib.android.showShortToast
 import org.florisboard.lib.android.systemService
 import org.florisboard.lib.kotlin.collectIn
 import org.florisboard.lib.kotlin.collectLatestIn
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -116,10 +118,16 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     val isVoiceRecording = _isVoiceRecording.asStateFlow()
     private val _isVoiceProcessing = MutableStateFlow(false)
     val isVoiceProcessing = _isVoiceProcessing.asStateFlow()
+    private val _isVoiceRetryable = MutableStateFlow(false)
+    val isVoiceRetryable = _isVoiceRetryable.asStateFlow()
+    private val _voiceErrorMessage = MutableStateFlow<String?>(null)
+    val voiceErrorMessage = _voiceErrorMessage.asStateFlow()
     private var voiceRecordingFile: File? = null
     private var mediaRecorder: MediaRecorder? = null
     private var wasPendingVoiceInput = false
     private var previousUiModeBeforeVoice: ImeUiMode? = null
+    private var lastVoiceContext: VoiceContextData? = null
+    private var lastBase64Audio: String? = null
 
     private val activeEvaluatorGuard = Mutex(locked = false)
     private var activeEvaluatorVersion = AtomicInteger(0)
@@ -1439,6 +1447,19 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             val base64Audio = Base64.encodeToString(audioBytes, Base64.NO_WRAP)
             flogInfo { "Audio converted to base64: ${base64Audio.length} characters" }
             
+            // Cache data for retry purposes BEFORE network check
+            lastVoiceContext = context
+            lastBase64Audio = base64Audio
+            
+            // Check network connectivity after caching data
+            if (!hasNetworkConnection()) {
+                flogError { "No network connection available" }
+                withContext(Dispatchers.Main) {
+                    handleVoiceError("No internet connection available")
+                }
+                return
+            }
+            
             // Send to backend
             flogInfo { "Sending to backend..." }
             val response = sendVoiceToBackend(base64Audio, context)
@@ -1472,15 +1493,21 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 flogError { "Failed to delete temporary file: ${e.message}" }
             }
             
-            // Reset processing state and return to previous UI mode
-            _isVoiceProcessing.value = false
+            // Reset processing state
             voiceRecordingFile = null
             
-            // Return to previous UI mode
-            previousUiModeBeforeVoice?.let { previousMode ->
-                activeState.imeUiMode = previousMode
-                flogInfo { "Returned to previous UI mode: $previousMode" }
-                previousUiModeBeforeVoice = null
+            // Only return to previous UI mode if we're not in retry state
+            if (!_isVoiceRetryable.value) {
+                _isVoiceProcessing.value = false
+                previousUiModeBeforeVoice?.let { previousMode ->
+                    activeState.imeUiMode = previousMode
+                    flogInfo { "Returned to previous UI mode: $previousMode" }
+                    previousUiModeBeforeVoice = null
+                }
+                
+                // Clear cached data if not retryable
+                lastVoiceContext = null
+                lastBase64Audio = null
             }
         }
     }
@@ -1688,6 +1715,22 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             return
         }
         
+        // Clear retry state on success
+        _isVoiceRetryable.value = false
+        _voiceErrorMessage.value = null
+        _isVoiceProcessing.value = false
+        
+        // Clear cached data
+        lastVoiceContext = null
+        lastBase64Audio = null
+        
+        // Return to previous UI mode immediately on success
+        previousUiModeBeforeVoice?.let { previousMode ->
+            activeState.imeUiMode = previousMode
+            flogInfo { "Returned to previous UI mode: $previousMode after successful processing" }
+            previousUiModeBeforeVoice = null
+        }
+        
         try {
             val finalText = response.finalText
             
@@ -1739,25 +1782,55 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     private fun handleVoiceError(error: String) {
         flogError { "Voice processing error: $error" }
         
-        // Restore previous UI mode on error
-        previousUiModeBeforeVoice?.let { previousMode ->
-            activeState.imeUiMode = previousMode
-            flogInfo { "Restored UI mode to $previousMode due to voice error" }
-            previousUiModeBeforeVoice = null
+        // Reset processing state
+        _isVoiceProcessing.value = false
+        
+        // Determine if error is retryable
+        val isRetryable = when {
+            error.contains("timeout", ignoreCase = true) -> true
+            error.contains("network", ignoreCase = true) -> true
+            error.contains("server", ignoreCase = true) -> true
+            error.contains("connection", ignoreCase = true) -> true
+            error.contains("internet", ignoreCase = true) -> true
+            error.contains("available", ignoreCase = true) -> true
+            error.contains("permission", ignoreCase = true) -> false
+            error.contains("audio", ignoreCase = true) -> false
+            error.contains("invalid", ignoreCase = true) -> false
+            else -> true // Default to retryable for unknown errors
         }
         
-        // Show user-friendly error message
-        val userMessage = when {
-            error.contains("timeout", ignoreCase = true) -> "⏱️ Request timed out - try again"
-            error.contains("network", ignoreCase = true) -> "🌐 Network error - check connection"
-            error.contains("permission", ignoreCase = true) -> "🎤 Microphone permission required"
-            error.contains("server", ignoreCase = true) -> "🔧 Server error - try again later"
-            error.contains("audio", ignoreCase = true) -> "🔊 Audio recording error"
-            else -> "❌ Voice input failed"
+        if (isRetryable && lastVoiceContext != null && lastBase64Audio != null) {
+            // Show retry options
+            _isVoiceRetryable.value = true
+            _voiceErrorMessage.value = when {
+                error.contains("timeout", ignoreCase = true) -> "⏱️ Request timed out"
+                error.contains("network", ignoreCase = true) -> "🌐 Network error"
+                error.contains("server", ignoreCase = true) -> "🔧 Server error"
+                error.contains("connection", ignoreCase = true) -> "🌐 Connection failed"
+                error.contains("internet", ignoreCase = true) -> "🌐 No internet connection available"
+                error.contains("available", ignoreCase = true) -> "🌐 No internet connection available"
+                else -> "❌ Voice processing failed"
+            }
+            flogInfo { "Error is retryable - showing retry options" }
+        } else {
+            // Non-retryable error - return to previous UI mode
+            previousUiModeBeforeVoice?.let { previousMode ->
+                activeState.imeUiMode = previousMode
+                flogInfo { "Restored UI mode to $previousMode due to non-retryable error" }
+                previousUiModeBeforeVoice = null
+            }
+            
+            // Show user-friendly error message
+            val userMessage = when {
+                error.contains("permission", ignoreCase = true) -> "🎤 Microphone permission required"
+                error.contains("audio", ignoreCase = true) -> "🔊 Audio recording error"
+                error.contains("invalid", ignoreCase = true) -> "❌ Invalid audio file"
+                else -> "❌ Voice input failed"
+            }
+            
+            appContext.showShortToast(userMessage)
+            flogInfo { "Displayed user message: $userMessage" }
         }
-        
-        appContext.showShortToast(userMessage)
-        flogInfo { "Displayed user message: $userMessage" }
     }
     
     /**
@@ -1780,6 +1853,145 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 startVoiceRecording()
             }
         }
+    }
+    
+    /**
+     * Checks if device has internet connectivity.
+     */
+    private fun hasNetworkConnection(): Boolean {
+        val connectivityManager = appContext.systemService(ConnectivityManager::class)
+        val network = connectivityManager.activeNetwork ?: return false
+        val networkCapabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        
+        return networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+               networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+               networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+    }
+    
+    /**
+     * Retries voice processing with the last recorded audio.
+     */
+    fun retryVoiceProcessing() {
+        val context = lastVoiceContext
+        val audioData = lastBase64Audio
+        
+        if (context == null || audioData == null) {
+            flogError { "Cannot retry - no cached audio data available" }
+            handleVoiceError("Cannot retry - no audio data available")
+            return
+        }
+        
+        if (!hasNetworkConnection()) {
+            flogError { "Cannot retry - no network connection" }
+            _voiceErrorMessage.value = "🌐 No internet connection available"
+            return
+        }
+        
+        flogInfo { "Retrying voice processing with cached audio data" }
+        
+        // Reset retry state and start processing
+        _isVoiceRetryable.value = false
+        _voiceErrorMessage.value = null
+        _isVoiceProcessing.value = true
+        
+        scope.launch(Dispatchers.IO) {
+            try {
+                val response = sendVoiceToBackend(audioData, context)
+                withContext(Dispatchers.Main) {
+                    processVoiceResponse(response)
+                }
+            } catch (e: Exception) {
+                flogError { "Retry failed: ${e.message}" }
+                withContext(Dispatchers.Main) {
+                    handleVoiceError("Retry failed: ${e.message}")
+                }
+            }
+        }
+    }
+    
+    /**
+     * Cancels voice processing and returns to previous UI mode.
+     * This completely clears all voice state since user explicitly cancelled.
+     */
+    fun cancelVoiceProcessing() {
+        flogInfo { "Voice processing cancelled by user" }
+        
+        // Clear ALL voice states since user explicitly cancelled
+        _isVoiceRecording.value = false
+        _isVoiceProcessing.value = false
+        _isVoiceRetryable.value = false
+        _voiceErrorMessage.value = null
+        
+        // Clear cached data
+        lastVoiceContext = null
+        lastBase64Audio = null
+        
+        // Return to previous UI mode
+        previousUiModeBeforeVoice?.let { previousMode ->
+            activeState.imeUiMode = previousMode
+            flogInfo { "Returned to previous UI mode: $previousMode after user cancellation" }
+            previousUiModeBeforeVoice = null
+        }
+    }
+    
+    /**
+     * Cleans up voice-related state when keyboard is hidden or dismissed.
+     * Preserves retry state so user can continue after fixing network issues.
+     */
+    fun cleanupVoiceState() {
+        flogInfo { "Cleaning up voice state due to keyboard dismissal" }
+        
+        // Stop any ongoing recording
+        if (_isVoiceRecording.value) {
+            try {
+                mediaRecorder?.apply {
+                    stop()
+                    release()
+                }
+                mediaRecorder = null
+            } catch (e: Exception) {
+                flogError { "Error stopping recording during cleanup: ${e.message}" }
+            }
+        }
+        
+        // Clear recording and processing states, but preserve retry state
+        _isVoiceRecording.value = false
+        _isVoiceProcessing.value = false
+        
+        // DO NOT clear retry state and cached data - user might need to fix network
+        // _isVoiceRetryable.value = false
+        // _voiceErrorMessage.value = null
+        // lastVoiceContext = null
+        // lastBase64Audio = null
+        
+        // Clean up temporary files
+        voiceRecordingFile?.let { file ->
+            try {
+                if (file.exists()) {
+                    file.delete()
+                    flogInfo { "Deleted temporary voice file during cleanup" }
+                }
+            } catch (e: Exception) {
+                flogError { "Failed to delete temporary voice file: ${e.message}" }
+            }
+        }
+        voiceRecordingFile = null
+        
+        // Only reset UI mode if we're NOT in retry state
+        if (activeState.imeUiMode == ImeUiMode.VOICE_RECORDING && !_isVoiceRetryable.value) {
+            previousUiModeBeforeVoice?.let { previousMode ->
+                activeState.imeUiMode = previousMode
+                flogInfo { "Restored UI mode to $previousMode during cleanup" }
+                previousUiModeBeforeVoice = null
+            }
+        }
+        
+        // Don't clear previous mode reference if we're in retry state
+        if (!_isVoiceRetryable.value) {
+            previousUiModeBeforeVoice = null
+        }
+        
+        flogInfo { "Voice state cleanup completed (retry state preserved: ${_isVoiceRetryable.value})" }
     }
     
     /**

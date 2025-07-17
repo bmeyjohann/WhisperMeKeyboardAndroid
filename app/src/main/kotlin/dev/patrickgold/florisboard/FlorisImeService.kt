@@ -382,6 +382,9 @@ class FlorisImeService : LifecycleInputMethodService() {
         flogInfo { "finishing=$finishingInput" }
         super.onFinishInputView(finishingInput)
         editorInstance.handleFinishInputView()
+        
+        // Clean up voice state when input view is finished
+        keyboardManager.cleanupVoiceState()
     }
 
     override fun onFinishInput() {
@@ -402,6 +405,13 @@ class FlorisImeService : LifecycleInputMethodService() {
         
         // Check if we have pending voice input after permission grant
         keyboardManager.checkPendingVoiceInput()
+        
+        // Check if we need to restore voice retry UI
+        if (keyboardManager.isVoiceRetryable.value) {
+            activeState.imeUiMode = ImeUiMode.VOICE_RECORDING
+            flogInfo { "Restored voice retry UI after keyboard reopen" }
+        }
+        
         isWindowShown = true
         themeManager.updateActiveTheme()
         inputFeedbackController.updateSystemPrefsState()
@@ -420,6 +430,9 @@ class FlorisImeService : LifecycleInputMethodService() {
             activeState.isActionsOverflowVisible = false
             activeState.isActionsEditorVisible = false
         }
+        
+        // Clean up voice state when keyboard is hidden
+        keyboardManager.cleanupVoiceState()
     }
 
     override fun onEvaluateFullscreenMode(): Boolean {
