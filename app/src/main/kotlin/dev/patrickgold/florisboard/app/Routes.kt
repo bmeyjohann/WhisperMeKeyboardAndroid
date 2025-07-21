@@ -68,6 +68,9 @@ import dev.patrickgold.florisboard.app.settings.theme.ThemeManagerScreen
 import dev.patrickgold.florisboard.app.settings.theme.ThemeManagerScreenAction
 import dev.patrickgold.florisboard.app.settings.theme.ThemeScreen
 import dev.patrickgold.florisboard.app.settings.typing.TypingScreen
+import dev.patrickgold.florisboard.app.settings.voiceinput.VoiceInputScreen
+import dev.patrickgold.florisboard.app.settings.voiceinput.VoiceInputNotesScreen
+import dev.patrickgold.florisboard.app.settings.voiceinput.VoiceInputRuleEditScreen
 import dev.patrickgold.florisboard.app.setup.SetupScreen
 import org.florisboard.lib.kotlin.curlyFormat
 
@@ -121,6 +124,11 @@ object Routes {
         const val About = "settings/about"
         const val ProjectLicense = "settings/about/project-license"
         const val ThirdPartyLicenses = "settings/about/third-party-licenses"
+        
+        const val VoiceInput = "settings/voice-input"
+        const val VoiceInputNotes = "settings/voice-input/notes"
+        const val VoiceInputRuleEdit = "settings/voice-input/rule/edit/{id}"
+        fun VoiceInputRuleEdit(id: String?) = VoiceInputRuleEdit.curlyFormat("id" to (id ?: "new"))
     }
 
     object Devtools {
@@ -266,6 +274,13 @@ object Routes {
             composableWithDeepLink(Settings.About) { AboutScreen() }
             composableWithDeepLink(Settings.ProjectLicense) { ProjectLicenseScreen() }
             composableWithDeepLink(Settings.ThirdPartyLicenses) { ThirdPartyLicensesScreen() }
+
+            composableWithDeepLink(Settings.VoiceInput) { VoiceInputScreen() }
+            composableWithDeepLink(Settings.VoiceInputNotes) { VoiceInputNotesScreen() }
+            composableWithDeepLink(Settings.VoiceInputRuleEdit) { navBackStack ->
+                val id = navBackStack.arguments?.getString("id")?.takeIf { it != "new" }
+                VoiceInputRuleEditScreen(id)
+            }
 
             composableWithDeepLink(Devtools.Home) { DevtoolsScreen() }
             composableWithDeepLink(Devtools.AndroidLocales) { AndroidLocalesScreen() }

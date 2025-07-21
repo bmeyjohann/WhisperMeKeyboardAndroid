@@ -177,6 +177,12 @@ fun HomeScreen() = FlorisScreen {
             onClick = { navController.navigate(Routes.Settings.Theme) },
         )
         Preference(
+            icon = Icons.Default.SmartButton,
+            title = "Voice Input",
+            summary = "Manage voice input rules and settings",
+            onClick = { navController.navigate(Routes.Settings.VoiceInput) },
+        )
+        Preference(
             icon = Icons.Outlined.Keyboard,
             title = stringRes(R.string.settings__keyboard__title),
             onClick = { navController.navigate(Routes.Settings.Keyboard) },
