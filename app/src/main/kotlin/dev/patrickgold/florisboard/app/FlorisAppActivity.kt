@@ -118,6 +118,15 @@ class FlorisAppActivity : ComponentActivity() {
         prefs.datastoreReadyStatus.observe(this) { isModelLoaded ->
             if (!isModelLoaded) return@observe
             AppVersionUtils.updateVersionOnInstallAndLastUse(this, prefs)
+            
+            // Refresh authentication token on app startup
+            val authManager = Auth0Manager.getInstance(this@FlorisAppActivity)
+            authManager.refreshTokenOnAppStartup { success ->
+                if (!success) {
+                    android.util.Log.d("FlorisAppActivity", "Token refresh failed or no credentials available")
+                }
+            }
+            
             setContent {
                 ProvideLocalizedResources(resourcesContext) {
                     FlorisAppTheme(theme = appTheme) {
@@ -128,6 +137,18 @@ class FlorisAppActivity : ComponentActivity() {
                 }
             }
             onNewIntent(intent)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        
+        // Refresh authentication token when app resumes
+        val authManager = Auth0Manager.getInstance(this)
+        authManager.refreshTokenOnAppStartup { success ->
+            if (!success) {
+                android.util.Log.d("FlorisAppActivity", "Token refresh failed on resume")
+            }
         }
     }
 

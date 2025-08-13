@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
@@ -70,6 +71,7 @@ fun VoiceRecordingLayout(
     val isProcessing by keyboardManager.isVoiceProcessing.collectAsState()
     val isRetryable by keyboardManager.isVoiceRetryable.collectAsState()
     val errorMessage by keyboardManager.voiceErrorMessage.collectAsState()
+    val isAuthError by keyboardManager.isVoiceAuthError.collectAsState()
     
     // Animation for recording pulsing effect
     val infiniteTransition = rememberInfiniteTransition(label = "voice_recording_pulse")
@@ -142,21 +144,37 @@ fun VoiceRecordingLayout(
                                 horizontalArrangement = Arrangement.spacedBy(32.dp),
                                 modifier = Modifier.padding(vertical = 16.dp)
                             ) {
-                                // Retry button
-                                SnyggIconButton(
-                                    elementName = FlorisImeUi.VoiceInputStopButton.elementName,
-                                    onClick = {
-                                        keyboardManager.retryVoiceProcessing()
-                                    },
-                                    modifier = Modifier.size(100.dp),
-                                ) {
-                                    SnyggIcon(
-                                        imageVector = Icons.Default.Refresh,
-                                        modifier = Modifier.size(50.dp),
-                                    )
+                                if (isAuthError) {
+                                    // Login button for authentication errors
+                                    SnyggIconButton(
+                                        elementName = FlorisImeUi.VoiceInputStopButton.elementName,
+                                        onClick = {
+                                            keyboardManager.openLoginScreen()
+                                        },
+                                        modifier = Modifier.size(100.dp),
+                                    ) {
+                                        SnyggIcon(
+                                            imageVector = Icons.Default.Login,
+                                            modifier = Modifier.size(50.dp),
+                                        )
+                                    }
+                                } else {
+                                    // Retry button for other errors
+                                    SnyggIconButton(
+                                        elementName = FlorisImeUi.VoiceInputStopButton.elementName,
+                                        onClick = {
+                                            keyboardManager.retryVoiceProcessing()
+                                        },
+                                        modifier = Modifier.size(100.dp),
+                                    ) {
+                                        SnyggIcon(
+                                            imageVector = Icons.Default.Refresh,
+                                            modifier = Modifier.size(50.dp),
+                                        )
+                                    }
                                 }
                                 
-                                // Cancel button
+                                // Cancel button (always shown)
                                 SnyggIconButton(
                                     elementName = FlorisImeUi.VoiceInputStopButton.elementName,
                                     onClick = {
@@ -172,7 +190,11 @@ fun VoiceRecordingLayout(
                             }
                             
                             SnyggText(
-                                text = "Tap retry to try again or cancel to return",
+                                text = if (isAuthError) {
+                                    "Tap login to authenticate or cancel to return"
+                                } else {
+                                    "Tap retry to try again or cancel to return"
+                                },
                                 modifier = Modifier.padding(top = 32.dp),
                             )
                         }

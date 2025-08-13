@@ -122,6 +122,8 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     val isVoiceRetryable = _isVoiceRetryable.asStateFlow()
     private val _voiceErrorMessage = MutableStateFlow<String?>(null)
     val voiceErrorMessage = _voiceErrorMessage.asStateFlow()
+    private val _isVoiceAuthError = MutableStateFlow(false)
+    val isVoiceAuthError = _isVoiceAuthError.asStateFlow()
     private var voiceRecordingFile: File? = null
     private var mediaRecorder: MediaRecorder? = null
     private var wasPendingVoiceInput = false
@@ -1526,8 +1528,16 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 flogInfo { "Context: ${context.packageName} - ${context.fieldType}" }
                 flogInfo { "Text before cursor: '${context.textBeforeCursor.takeLast(100)}'" }
                 
-                // Get authentication token from Auth0Manager
+                // Get fresh authentication credentials from Auth0Manager
                 val authManager = Auth0Manager.getInstance(appContext)
+                
+                // Get fresh credentials (automatically handles token refresh if needed)
+                var credentialsObtained = false
+                authManager.getFreshCredentials { success ->
+                    credentialsObtained = success
+                    flogInfo { "Fresh credentials obtained: $success" }
+                }
+                
                 val authToken: String? = authManager.accessToken.value
                 
                 // Create JSON request body
@@ -1579,6 +1589,15 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 
                 if (responseCode in 200..299) {
                     parseVoiceResponse(responseBody)
+                } else if (responseCode == 401) {
+                    flogError { "Authentication error (401): $responseBody" }
+                    VoiceResponse(
+                        success = false,
+                        transcription = null,
+                        finalText = null,
+                        error = "Authentication failed - please log in again",
+                        isAuthenticationError = true
+                    )
                 } else {
                     flogError { "HTTP error $responseCode: $responseBody" }
                     VoiceResponse(
@@ -1711,13 +1730,14 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         if (!response.success) {
             val errorMessage = response.error ?: "Unknown error"
             flogError { "Voice processing failed: $errorMessage" }
-            handleVoiceError(errorMessage)
+            handleVoiceError(errorMessage, response.isAuthenticationError)
             return
         }
         
         // Clear retry state on success
         _isVoiceRetryable.value = false
         _voiceErrorMessage.value = null
+        _isVoiceAuthError.value = false
         _isVoiceProcessing.value = false
         
         // Clear cached data
@@ -1779,30 +1799,38 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     /**
      * Handles voice processing errors.
      */
-    private fun handleVoiceError(error: String) {
-        flogError { "Voice processing error: $error" }
+    private fun handleVoiceError(error: String, isAuthenticationError: Boolean = false) {
+        flogError { "Voice processing error: $error (auth error: $isAuthenticationError)" }
         
         // Reset processing state
         _isVoiceProcessing.value = false
         
-        // Determine if error is retryable
-        val isRetryable = when {
-            error.contains("timeout", ignoreCase = true) -> true
-            error.contains("network", ignoreCase = true) -> true
-            error.contains("server", ignoreCase = true) -> true
-            error.contains("connection", ignoreCase = true) -> true
-            error.contains("internet", ignoreCase = true) -> true
-            error.contains("available", ignoreCase = true) -> true
-            error.contains("permission", ignoreCase = true) -> false
-            error.contains("audio", ignoreCase = true) -> false
-            error.contains("invalid", ignoreCase = true) -> false
-            else -> true // Default to retryable for unknown errors
+        // Set authentication error flag
+        _isVoiceAuthError.value = isAuthenticationError
+        
+        // Authentication errors are always retryable (but with login option)
+        val isRetryable = if (isAuthenticationError) {
+            true
+        } else {
+            when {
+                error.contains("timeout", ignoreCase = true) -> true
+                error.contains("network", ignoreCase = true) -> true
+                error.contains("server", ignoreCase = true) -> true
+                error.contains("connection", ignoreCase = true) -> true
+                error.contains("internet", ignoreCase = true) -> true
+                error.contains("available", ignoreCase = true) -> true
+                error.contains("permission", ignoreCase = true) -> false
+                error.contains("audio", ignoreCase = true) -> false
+                error.contains("invalid", ignoreCase = true) -> false
+                else -> true // Default to retryable for unknown errors
+            }
         }
         
         if (isRetryable && lastVoiceContext != null && lastBase64Audio != null) {
             // Show retry options
             _isVoiceRetryable.value = true
             _voiceErrorMessage.value = when {
+                isAuthenticationError -> "🔑 Please log in to continue"
                 error.contains("timeout", ignoreCase = true) -> "⏱️ Request timed out"
                 error.contains("network", ignoreCase = true) -> "🌐 Network error"
                 error.contains("server", ignoreCase = true) -> "🔧 Server error"
@@ -1892,6 +1920,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         // Reset retry state and start processing
         _isVoiceRetryable.value = false
         _voiceErrorMessage.value = null
+        _isVoiceAuthError.value = false
         _isVoiceProcessing.value = true
         
         scope.launch(Dispatchers.IO) {
@@ -1921,6 +1950,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         _isVoiceProcessing.value = false
         _isVoiceRetryable.value = false
         _voiceErrorMessage.value = null
+        _isVoiceAuthError.value = false
         
         // Clear cached data
         lastVoiceContext = null
@@ -1931,6 +1961,28 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             activeState.imeUiMode = previousMode
             flogInfo { "Returned to previous UI mode: $previousMode after user cancellation" }
             previousUiModeBeforeVoice = null
+        }
+    }
+    
+    /**
+     * Opens the login screen to re-authenticate the user.
+     */
+    fun openLoginScreen() {
+        flogInfo { "Opening login screen for re-authentication" }
+        
+        // Create intent to open the main app's login screen
+        val intent = Intent(appContext, dev.patrickgold.florisboard.app.FlorisAppActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra("showLogin", true) // Add extra to indicate login should be shown
+        }
+        
+        try {
+            appContext.startActivity(intent)
+            flogInfo { "Login screen opened successfully" }
+        } catch (e: Exception) {
+            flogError { "Failed to open login screen: ${e.message}" }
+            appContext.showShortToast("Please open WhisperMe app to log in")
         }
     }
     
@@ -2044,7 +2096,8 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         val success: Boolean,
         val transcription: String?,
         val finalText: String?,
-        val error: String?
+        val error: String?,
+        val isAuthenticationError: Boolean = false
     )
 
     /**

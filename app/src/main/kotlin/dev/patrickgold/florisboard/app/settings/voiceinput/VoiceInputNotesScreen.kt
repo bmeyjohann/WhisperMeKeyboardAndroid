@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -36,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.AssistChip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,6 +54,8 @@ import dev.patrickgold.florisboard.app.LocalNavController
 import dev.patrickgold.florisboard.app.Routes
 import dev.patrickgold.florisboard.lib.compose.FlorisScreen
 import dev.patrickgold.florisboard.lib.compose.FlorisIconButton
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 @Composable
 fun VoiceInputNotesScreen() = FlorisScreen {
@@ -115,6 +120,13 @@ fun VoiceInputNotesScreen() = FlorisScreen {
                     error = "API connection failed: ${exception.message}"
                 }
             )
+        }
+    }
+
+    // On app start, refresh app list cache
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.GlobalScope.launch {
+            AppListCache.refreshAppListAsync(context)
         }
     }
 
@@ -232,6 +244,15 @@ private fun TagRuleCard(
                         contentDescription = "Delete rule",
                         tint = MaterialTheme.colorScheme.error
                     )
+                }
+            }
+            // Show associated apps as chips
+            if (rule.apps != null && rule.apps.isNotEmpty()) {
+                Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    rule.apps.forEach { app ->
+                        AssistChip(onClick = {}, label = { Text(app.app_name) })
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
                 }
             }
         }

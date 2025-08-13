@@ -51,6 +51,16 @@ import dev.patrickgold.florisboard.lib.compose.FlorisIconButton
 import dev.patrickgold.florisboard.lib.compose.FlorisScreen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import dev.patrickgold.florisboard.app.settings.voiceinput.AppListCache
+import dev.patrickgold.florisboard.app.settings.voiceinput.AppAssociation
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.TextField
+import androidx.compose.foundation.layout.width
 
 private const val MAX_CHARACTERS = 500
 private const val WARNING_THRESHOLD = 450
@@ -69,7 +79,10 @@ fun VoiceInputRuleEditScreen(ruleId: String?) = FlorisScreen {
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showSuccess by remember { mutableStateOf(false) }
-    
+    var showAppDialog by remember { mutableStateOf(false) }
+    var appSearch by remember { mutableStateOf("") }
+    var selectedApps by remember { mutableStateOf<List<AppAssociation>>(emptyList()) }
+
     val apiService = remember { TagRulesApiService(context) }
     val isEditing = ruleId != null
     
@@ -81,12 +94,25 @@ fun VoiceInputRuleEditScreen(ruleId: String?) = FlorisScreen {
     // Load existing rule if editing
     LaunchedEffect(ruleId) {
         if (isEditing && ruleId != null) {
-            // TODO: Load existing rule data
             isLoading = true
-            // For now, just set some placeholder data
-            tagName = "Example Rule"
-            ruleText = "This is an example rule that shows how the editing works."
-            isLoading = false
+            // Fetch rule from API
+            apiService.getTagRules().collect { result ->
+                result.fold(
+                    onSuccess = { rules ->
+                        val rule = rules.find { it.id.toString() == ruleId }
+                        if (rule != null) {
+                            tagName = rule.name
+                            ruleText = rule.rule_text
+                            selectedApps = rule.apps ?: emptyList()
+                        }
+                        isLoading = false
+                    },
+                    onFailure = { exception ->
+                        error = exception.message
+                        isLoading = false
+                    }
+                )
+            }
         }
     }
 
@@ -111,7 +137,8 @@ fun VoiceInputRuleEditScreen(ruleId: String?) = FlorisScreen {
                             
                             val request = TagRuleRequest(
                                 name = tagName.trim(),
-                                rule_text = ruleText.trim()
+                                rule_text = ruleText.trim(),
+                                apps = selectedApps
                             )
                             
                             if (isEditing && ruleId != null) {
@@ -316,7 +343,8 @@ fun VoiceInputRuleEditScreen(ruleId: String?) = FlorisScreen {
                                 
                                 val request = TagRuleRequest(
                                     name = tagName.trim(),
-                                    rule_text = ruleText.trim()
+                                    rule_text = ruleText.trim(),
+                                    apps = selectedApps
                                 )
                                 
                                 if (isEditing && ruleId != null) {
@@ -412,6 +440,57 @@ fun VoiceInputRuleEditScreen(ruleId: String?) = FlorisScreen {
                     )
                 }
             }
+        }
+    }
+
+    val allApps = remember { AppListCache.loadAppList(context) }
+
+    // App selection UI
+    if (showAppDialog) {
+        AlertDialog(
+            onDismissRequest = { showAppDialog = false },
+            title = { Text("Select Apps") },
+            text = {
+                Column {
+                    TextField(
+                        value = appSearch,
+                        onValueChange = { appSearch = it },
+                        label = { Text("Search apps") },
+                        singleLine = true
+                    )
+                    val filtered = allApps.filter { it.appName.contains(appSearch, ignoreCase = true) }
+                    filtered.forEach { app ->
+                        val checked = selectedApps.any { it.app_name == app.appName }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = checked,
+                                onCheckedChange = { isChecked ->
+                                    selectedApps = if (isChecked) {
+                                        selectedApps + AppAssociation(app.appName, "android")
+                                    } else {
+                                        selectedApps.filter { it.app_name != app.appName }
+                                    }
+                                }
+                            )
+                            Text(app.appName)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showAppDialog = false }) { Text("OK") }
+            }
+        )
+    }
+
+    // Button to open app selection dialog
+    Button(onClick = { showAppDialog = true }) { Text("Select Apps") }
+
+    // Show selected apps as chips
+    Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+        selectedApps.forEach { app ->
+            AssistChip(onClick = {}, label = { Text(app.app_name) })
+            Spacer(modifier = Modifier.width(8.dp))
         }
     }
 } 

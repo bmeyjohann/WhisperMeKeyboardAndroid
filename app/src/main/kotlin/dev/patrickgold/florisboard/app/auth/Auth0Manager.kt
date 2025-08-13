@@ -41,7 +41,12 @@ class Auth0Manager private constructor(context: Context) {
             context.getString(R.string.com_auth0_domain)
         )
         authenticationApiClient = AuthenticationAPIClient(account)
-        credentialsManager = CredentialsManager(authenticationApiClient, SharedPreferencesStorage(context))
+        
+        // Configure CredentialsManager for automatic token refresh
+        val storage = SharedPreferencesStorage(context)
+        credentialsManager = CredentialsManager(authenticationApiClient, storage)
+        
+        Log.d("Auth0Manager", "CredentialsManager configured for automatic token management")
         
         // Debug logging
         Log.d("Auth0Manager", "Auth0 initialized successfully")
@@ -61,12 +66,45 @@ class Auth0Manager private constructor(context: Context) {
                 }
 
                 override fun onFailure(error: CredentialsManagerException) {
+                    Log.w("Auth0Manager", "Failed to get credentials on startup: ${error.message}")
                     _isAuthenticated.value = false
                     _accessToken.value = null
                     _userProfile.value = null
                 }
             })
+        } else {
+            Log.d("Auth0Manager", "No valid credentials found on startup")
+            _isAuthenticated.value = false
+            _accessToken.value = null
+            _userProfile.value = null
         }
+    }
+
+    fun refreshTokenOnAppStartup(callback: (Boolean) -> Unit) {
+        Log.d("Auth0Manager", "Attempting token refresh on app startup")
+        if (!credentialsManager.hasValidCredentials()) {
+            Log.d("Auth0Manager", "No credentials to refresh")
+            callback(false)
+            return
+        }
+
+        credentialsManager.getCredentials(object : Callback<Credentials, CredentialsManagerException> {
+            override fun onSuccess(result: Credentials) {
+                Log.d("Auth0Manager", "Token refreshed successfully on startup")
+                _isAuthenticated.value = true
+                _accessToken.value = result.accessToken
+                getUserProfile(result.accessToken)
+                callback(true)
+            }
+
+            override fun onFailure(error: CredentialsManagerException) {
+                Log.w("Auth0Manager", "Token refresh failed on startup: ${error.message}")
+                _isAuthenticated.value = false
+                _accessToken.value = null
+                _userProfile.value = null
+                callback(false)
+            }
+        })
     }
 
     fun login(activity: ComponentActivity, callback: (Boolean, String?) -> Unit) {
@@ -84,7 +122,7 @@ class Auth0Manager private constructor(context: Context) {
         
         WebAuthProvider.login(account)
             .withScheme(scheme)
-            .withScope("openid profile email")
+            .withScope("openid profile email offline_access")
             .start(activity, object : Callback<Credentials, com.auth0.android.authentication.AuthenticationException> {
                 override fun onSuccess(result: Credentials) {
                     Log.d("Auth0Manager", "Login successful!")
@@ -150,19 +188,24 @@ class Auth0Manager private constructor(context: Context) {
         return _accessToken.value?.let { "Bearer $it" }
     }
 
-    fun refreshTokenIfNeeded(callback: (Boolean) -> Unit) {
-        if (!credentialsManager.hasValidCredentials()) {
-            callback(false)
-            return
-        }
-
+    /**
+     * Gets fresh credentials on-demand. The CredentialsManager automatically handles:
+     * - Checking if current token is still valid
+     * - Refreshing with refresh token if access token is expired/about to expire
+     * - Token rotation if configured
+     * This is the proper way to ensure fresh tokens before API calls.
+     */
+    fun getFreshCredentials(callback: (Boolean) -> Unit) {
         credentialsManager.getCredentials(object : Callback<Credentials, CredentialsManagerException> {
             override fun onSuccess(result: Credentials) {
+                Log.d("Auth0Manager", "Fresh credentials obtained successfully")
                 _accessToken.value = result.accessToken
+                _isAuthenticated.value = true
                 callback(true)
             }
 
             override fun onFailure(error: CredentialsManagerException) {
+                Log.w("Auth0Manager", "Failed to get fresh credentials: ${error.message}")
                 _isAuthenticated.value = false
                 _accessToken.value = null
                 _userProfile.value = null
@@ -170,6 +213,14 @@ class Auth0Manager private constructor(context: Context) {
             }
         })
     }
+    
+    /**
+     * Legacy method - kept for backward compatibility but delegates to getFreshCredentials
+     */
+    fun refreshTokenIfNeeded(callback: (Boolean) -> Unit) {
+        getFreshCredentials(callback)
+    }
+
 
     companion object {
         @Volatile

@@ -27,7 +27,37 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.IOException
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+
+@Serializable
+data class TagRulesResponse(
+    val success: Boolean,
+    val rules: List<TagRule>
+)
+
+@Serializable
+data class AppAssociation(val app_name: String, val app_platform: String)
+
+@Serializable
+data class TagRuleRequest(
+    val name: String,
+    val rule_text: String,
+    val apps: List<AppAssociation>? = null
+)
+
+@Serializable
+data class TagRule(
+    val id: Int,
+    val user_id: String,
+    val name: String,
+    val rule_text: String,
+    val created_ts: String,
+    val updated_ts: String,
+    val created_by: String,
+    val updated_by: String,
+    val apps: List<AppAssociation>? = null
+)
 
 class TagRulesApiService(private val context: Context) {
     private val authManager = Auth0Manager.getInstance(context)
@@ -68,9 +98,13 @@ class TagRulesApiService(private val context: Context) {
                     
                     if (responseBody != null) {
                         try {
-                            val tagRulesResponse = json.decodeFromString<TagRulesResponse>(responseBody)
-                            println("DEBUG: Successfully parsed ${tagRulesResponse.rules.size} rules")
-                            emit(Result.success(tagRulesResponse.rules))
+                            val responseObj = json.decodeFromString<TagRulesResponse>(responseBody)
+                            if (responseObj.success) {
+                                println("DEBUG: Successfully parsed ${responseObj.rules.size} rules")
+                                emit(Result.success(responseObj.rules))
+                            } else {
+                                emit(Result.failure(Exception("API returned success=false")))
+                            }
                         } catch (e: Exception) {
                             println("DEBUG: JSON parsing error: ${e.message}")
                             emit(Result.failure(Exception("Failed to parse response: ${e.message}")))
@@ -124,8 +158,8 @@ class TagRulesApiService(private val context: Context) {
                 if (response.isSuccessful) {
                     val responseBody = response.body?.string()
                     if (responseBody != null) {
-                        val tagRuleResponse = json.decodeFromString<TagRuleResponse>(responseBody)
-                        emit(Result.success(tagRuleResponse.rule))
+                        val rule = json.decodeFromString<TagRule>(responseBody)
+                        emit(Result.success(rule))
                     } else {
                         emit(Result.failure(Exception("Empty response")))
                     }
@@ -169,8 +203,8 @@ class TagRulesApiService(private val context: Context) {
                 if (response.isSuccessful) {
                     val responseBody = response.body?.string()
                     if (responseBody != null) {
-                        val tagRuleResponse = json.decodeFromString<TagRuleResponse>(responseBody)
-                        emit(Result.success(tagRuleResponse.rule))
+                        val rule = json.decodeFromString<TagRule>(responseBody)
+                        emit(Result.success(rule))
                     } else {
                         emit(Result.failure(Exception("Empty response")))
                     }

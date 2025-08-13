@@ -19,38 +19,6 @@ package dev.patrickgold.florisboard.app.settings.voiceinput
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class TagRule(
-    val id: Int,
-    val user_id: String,
-    val name: String,
-    val rule_text: String,
-    val created_ts: String,
-    val updated_ts: String,
-    val created_by: String?,
-    val updated_by: String?
-)
-
-@Serializable
-data class TagRuleRequest(
-    val name: String,
-    val rule_text: String,
-    val created_by: String? = null,
-    val updated_by: String? = null
-)
-
-@Serializable
-data class TagRulesResponse(
-    val success: Boolean,
-    val rules: List<TagRule>
-)
-
-@Serializable
-data class TagRuleResponse(
-    val success: Boolean,
-    val rule: TagRule
-)
-
-@Serializable
 data class ApiError(
     val success: Boolean,
     val error: String
