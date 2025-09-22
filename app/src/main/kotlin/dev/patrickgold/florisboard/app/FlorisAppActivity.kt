@@ -119,13 +119,10 @@ class FlorisAppActivity : ComponentActivity() {
             if (!isModelLoaded) return@observe
             AppVersionUtils.updateVersionOnInstallAndLastUse(this, prefs)
             
-            // Refresh authentication token on app startup
+            // Initialize authentication on app startup (only check, don't force refresh)
             val authManager = Auth0Manager.getInstance(this@FlorisAppActivity)
-            authManager.refreshTokenOnAppStartup { success ->
-                if (!success) {
-                    android.util.Log.d("FlorisAppActivity", "Token refresh failed or no credentials available")
-                }
-            }
+            // The Auth0Manager constructor already calls checkAuthentication(), so no need for additional calls here
+            android.util.Log.d("FlorisAppActivity", "Auth0Manager initialized on app startup")
             
             setContent {
                 ProvideLocalizedResources(resourcesContext) {
@@ -143,13 +140,8 @@ class FlorisAppActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         
-        // Refresh authentication token when app resumes
-        val authManager = Auth0Manager.getInstance(this)
-        authManager.refreshTokenOnAppStartup { success ->
-            if (!success) {
-                android.util.Log.d("FlorisAppActivity", "Token refresh failed on resume")
-            }
-        }
+        // Only log that we're resuming - the smart auth middleware will handle token refresh when needed
+        android.util.Log.d("FlorisAppActivity", "App resumed - auth middleware will handle token refresh as needed")
     }
 
     override fun onPause() {

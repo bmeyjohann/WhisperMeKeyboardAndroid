@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.app.settings.voiceinput
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -329,6 +330,51 @@ fun VoiceInputRuleEditScreen(ruleId: String?) = FlorisScreen {
             
             Spacer(modifier = Modifier.height(24.dp))
             
+            // App Selection Section
+            Column {
+                Text(
+                    text = "Associated Apps",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = "Select apps where this rule should apply",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Button to open app selection dialog
+                Button(
+                    onClick = { showAppDialog = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) { 
+                    Text("Select Apps (${selectedApps.size} selected)")
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Show selected apps as chips
+                if (selectedApps.isNotEmpty()) {
+                    Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        selectedApps.forEach { app ->
+                            AssistChip(
+                                onClick = {
+                                    // Remove app when chip is clicked
+                                    selectedApps = selectedApps.filter { it.app_identifier != app.app_identifier }
+                                },
+                                label = { Text(app.app_name) }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
             // Save Button
             Button(
                 onClick = {
@@ -445,7 +491,7 @@ fun VoiceInputRuleEditScreen(ruleId: String?) = FlorisScreen {
 
     val allApps = remember { AppListCache.loadAppList(context) }
 
-    // App selection UI
+    // App selection dialog
     if (showAppDialog) {
         AlertDialog(
             onDismissRequest = { showAppDialog = false },
@@ -456,41 +502,48 @@ fun VoiceInputRuleEditScreen(ruleId: String?) = FlorisScreen {
                         value = appSearch,
                         onValueChange = { appSearch = it },
                         label = { Text("Search apps") },
-                        singleLine = true
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
                     val filtered = allApps.filter { it.appName.contains(appSearch, ignoreCase = true) }
                     filtered.forEach { app ->
-                        val checked = selectedApps.any { it.app_name == app.appName }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        val checked = selectedApps.any { it.app_identifier == app.packageName }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedApps = if (checked) {
+                                        selectedApps.filter { it.app_identifier != app.packageName }
+                                    } else {
+                                        selectedApps + AppAssociation(app.appName, "android", app.packageName)
+                                    }
+                                }
+                                .padding(vertical = 4.dp)
+                        ) {
                             Checkbox(
                                 checked = checked,
                                 onCheckedChange = { isChecked ->
                                     selectedApps = if (isChecked) {
-                                        selectedApps + AppAssociation(app.appName, "android")
+                                        selectedApps + AppAssociation(app.appName, "android", app.packageName)
                                     } else {
-                                        selectedApps.filter { it.app_name != app.appName }
+                                        selectedApps.filter { it.app_identifier != app.packageName }
                                     }
                                 }
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(app.appName)
                         }
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = { showAppDialog = false }) { Text("OK") }
+                Button(onClick = { showAppDialog = false }) { 
+                    Text("Done")
+                }
             }
         )
-    }
-
-    // Button to open app selection dialog
-    Button(onClick = { showAppDialog = true }) { Text("Select Apps") }
-
-    // Show selected apps as chips
-    Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-        selectedApps.forEach { app ->
-            AssistChip(onClick = {}, label = { Text(app.app_name) })
-            Spacer(modifier = Modifier.width(8.dp))
-        }
     }
 } 

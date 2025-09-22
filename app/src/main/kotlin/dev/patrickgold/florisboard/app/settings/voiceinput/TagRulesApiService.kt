@@ -37,7 +37,11 @@ data class TagRulesResponse(
 )
 
 @Serializable
-data class AppAssociation(val app_name: String, val app_platform: String)
+data class AppAssociation(
+    val app_name: String,
+    val app_platform: String,
+    val app_identifier: String = "",
+)
 
 @Serializable
 data class TagRuleRequest(
@@ -69,11 +73,10 @@ class TagRulesApiService(private val context: Context) {
     suspend fun getTagRules(): Flow<Result<List<TagRule>>> = flow {
         try {
             println("DEBUG: Checking authentication...")
-            val authHeader = authManager.getAuthHeader()
-            println("DEBUG: Auth header: ${authHeader?.take(20)}...")
+            val token = authManager.getValidAccessToken()
+            println("DEBUG: Access token prefix: ${token?.take(20)}...")
             
-            val token = authHeader?.removePrefix("Bearer ")
-            if (token == null) {
+            if (token.isNullOrEmpty()) {
                 println("DEBUG: No auth token available")
                 emit(Result.failure(Exception("Not authenticated")))
                 return@flow
@@ -139,8 +142,8 @@ class TagRulesApiService(private val context: Context) {
     
     suspend fun createTagRule(request: TagRuleRequest): Flow<Result<TagRule>> = flow {
         try {
-            val token = authManager.getAuthHeader()?.removePrefix("Bearer ")
-            if (token == null) {
+            val token = authManager.getValidAccessToken()
+            if (token.isNullOrEmpty()) {
                 emit(Result.failure(Exception("Not authenticated")))
                 return@flow
             }
@@ -184,13 +187,14 @@ class TagRulesApiService(private val context: Context) {
     
     suspend fun updateTagRule(id: Int, request: TagRuleRequest): Flow<Result<TagRule>> = flow {
         try {
-            val token = authManager.getAuthHeader()?.removePrefix("Bearer ")
-            if (token == null) {
+            val token = authManager.getValidAccessToken()
+            if (token.isNullOrEmpty()) {
                 emit(Result.failure(Exception("Not authenticated")))
                 return@flow
             }
             
             val jsonBody = json.encodeToString(TagRuleRequest.serializer(), request)
+            println("DEBUG: Update request body: $jsonBody")
             val requestBody = jsonBody.toRequestBody("application/json".toMediaType())
             
             val httpRequest = Request.Builder()
@@ -200,8 +204,10 @@ class TagRulesApiService(private val context: Context) {
                 .build()
             
             client.newCall(httpRequest).execute().use { response ->
+                println("DEBUG: Update response code: ${response.code}")
                 if (response.isSuccessful) {
                     val responseBody = response.body?.string()
+                    println("DEBUG: Update response body: $responseBody")
                     if (responseBody != null) {
                         val rule = json.decodeFromString<TagRule>(responseBody)
                         emit(Result.success(rule))
@@ -210,11 +216,15 @@ class TagRulesApiService(private val context: Context) {
                     }
                 } else {
                     val errorBody = response.body?.string()
+                    println("DEBUG: Update error response: $errorBody")
                     val error = if (errorBody != null) {
                         try {
-                            json.decodeFromString<ApiError>(errorBody).error
+                            val apiError = json.decodeFromString<ApiError>(errorBody)
+                            println("DEBUG: Parsed API error: ${apiError.error}")
+                            apiError.error
                         } catch (e: Exception) {
-                            "HTTP ${response.code}"
+                            println("DEBUG: Failed to parse error response: ${e.message}")
+                            "HTTP ${response.code}: $errorBody"
                         }
                     } else {
                         "HTTP ${response.code}"
@@ -223,14 +233,16 @@ class TagRulesApiService(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
+            println("DEBUG: Exception in updateTagRule: ${e.message}")
+            e.printStackTrace()
             emit(Result.failure(e))
         }
     }.flowOn(Dispatchers.IO)
     
     suspend fun deleteTagRule(id: Int): Flow<Result<Unit>> = flow {
         try {
-            val token = authManager.getAuthHeader()?.removePrefix("Bearer ")
-            if (token == null) {
+            val token = authManager.getValidAccessToken()
+            if (token.isNullOrEmpty()) {
                 emit(Result.failure(Exception("Not authenticated")))
                 return@flow
             }
