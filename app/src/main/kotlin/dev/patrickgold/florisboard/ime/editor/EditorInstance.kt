@@ -239,6 +239,38 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
         }
     }
 
+    fun replaceAllText(newText: String): Boolean {
+        val content = activeContent
+        val before = content.textBeforeSelection.length
+        val selected = content.selectedText.length
+        val after = content.textAfterSelection.length
+        val totalLength = before + selected + after
+
+        if (totalLength == 0) {
+            return commitText(newText)
+        }
+
+        if (setSelection(0, totalLength) && commitText(newText)) {
+            return true
+        }
+
+        if (performClipboardSelectAll() && commitText(newText)) {
+            return true
+        }
+
+        val ic = currentInputConnection() ?: return false
+        ic.beginBatchEdit()
+        ic.finishComposingText()
+
+        return try {
+            ic.deleteSurroundingText(before + selected, after)
+            ic.commitText(newText, 1)
+            true
+        } finally {
+            ic.endBatchEdit()
+        }
+    }
+
     /**
      * Completes the given [candidate] in the current composing region. Does nothing if the current
      * input editor is not rich or if the input connection is invalid.

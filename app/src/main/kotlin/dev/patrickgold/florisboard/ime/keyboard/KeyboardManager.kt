@@ -154,6 +154,19 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     ).also { it.keyEventReceiver = this }
 
     init {
+        // Set up authentication callback to clear auth error state after login
+        val authManager = Auth0Manager.getInstance(appContext)
+        authManager.setAuthStateChangeCallback { isAuthenticated ->
+            if (isAuthenticated && _isVoiceAuthError.value && _isVoiceRetryable.value) {
+                flogInfo { "User authenticated after auth error - clearing auth error state" }
+                // Clear auth error state so user sees normal retry UI (not login UI)
+                _isVoiceAuthError.value = false
+                // Keep _isVoiceRetryable.value = true so user can manually retry
+                // Update error message to show normal retry message
+                _voiceErrorMessage.value = "🔄 Ready to retry voice processing"
+            }
+        }
+        
         scope.launch(Dispatchers.Main.immediate) {
             resources.anyChanged.observeForever {
                 updateActiveEvaluators {
@@ -1532,14 +1545,20 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 val authManager = Auth0Manager.getInstance(appContext)
                 
                 // Get fresh credentials (automatically handles token refresh if needed)
-                var credentialsObtained = false
-                authManager.getFreshCredentials { success ->
-                    credentialsObtained = success
-                    flogInfo { "Fresh credentials obtained: $success" }
+                val authToken: String? = authManager.getValidAccessToken()
+                flogInfo { "Access token available: ${authToken != null}" }
+                
+                if (authToken == null) {
+                    flogError { "No valid Auth0 credentials available" }
+                    return@withContext VoiceResponse(
+                        success = false,
+                        transcription = null,
+                        finalText = null,
+                        error = "Authentication failed - please log in again",
+                        isAuthenticationError = true
+                    )
                 }
-                
-                val authToken: String? = authManager.accessToken.value
-                
+
                 // Create JSON request body
                 val requestBody = buildJsonRequest(base64Audio, context)
                 flogInfo { "Request body length: ${requestBody.length} characters" }
@@ -1591,6 +1610,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                     parseVoiceResponse(responseBody)
                 } else if (responseCode == 401) {
                     flogError { "Authentication error (401): $responseBody" }
+                    authManager.invalidateSession()
                     VoiceResponse(
                         success = false,
                         transcription = null,
@@ -1765,10 +1785,13 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 flogInfo { "New text: '$finalText'" }
                 
                 if (finalText != currentText) {
-                    // Select all current text and replace it with the final text
-                    editorInstance.performClipboardSelectAll()
-                    editorInstance.commitText(finalText)
-                    flogInfo { "✅ Text replacement completed" }
+                    val replaced = editorInstance.replaceAllText(finalText)
+                    if (replaced) {
+                        flogInfo { "✅ Text replacement completed" }
+                    } else {
+                        flogError { "Failed to replace full text via replaceAllText, falling back to direct commit" }
+                        editorInstance.commitText(finalText)
+                    }
                 } else {
                     flogInfo { "ℹ️ Final text same as current - no change needed" }
                 }
@@ -1955,6 +1978,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         // Clear cached data
         lastVoiceContext = null
         lastBase64Audio = null
+        
+        // Clear auth callback since voice session is fully cancelled
+        val authManager = Auth0Manager.getInstance(appContext)
+        authManager.clearAuthStateChangeCallback()
         
         // Return to previous UI mode
         previousUiModeBeforeVoice?.let { previousMode ->
