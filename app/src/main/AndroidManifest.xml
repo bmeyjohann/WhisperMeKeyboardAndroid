@@ -10,10 +10,10 @@
 
     <!-- Permission needed for voice recording functionality -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-    
+
     <!-- Permission needed for sending voice data to backend -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    
+
     <!-- Permission needed for checking network connectivity -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
@@ -31,7 +31,7 @@
     </queries>
 
     <application
-        android:name="dev.patrickgold.florisboard.FlorisApplication"
+        android:name=".FlorisApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/backup_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -48,7 +48,7 @@
 
         <!-- IME service -->
         <service
-            android:name="dev.patrickgold.florisboard.FlorisImeService"
+            android:name=".FlorisImeService"
             android:label="@string/floris_app_name"
             android:permission="android.permission.BIND_INPUT_METHOD"
             android:directBootAware="true"
@@ -61,7 +61,7 @@
 
         <!-- Spellchecker service -->
         <service
-            android:name="dev.patrickgold.florisboard.FlorisSpellCheckerService"
+            android:name=".FlorisSpellCheckerService"
             android:label="@string/floris_app_name"
             android:permission="android.permission.BIND_TEXT_SERVICE"
             android:exported="true">
@@ -73,7 +73,7 @@
 
         <!-- Main App Activity -->
         <activity
-            android:name="dev.patrickgold.florisboard.app.FlorisAppActivity"
+            android:name=".app.FlorisAppActivity"
             android:icon="@mipmap/floris_app_icon"
             android:label="@string/settings__title"
             android:launchMode="singleTask"
@@ -104,12 +104,12 @@
 
         <!-- Using an activity alias to disable/enable the app icon in the launcher -->
         <activity-alias
-            android:name="dev.patrickgold.florisboard.SettingsLauncherAlias"
+            android:name="app.whisperme.keyboard.SettingsLauncherAlias"
             android:icon="@mipmap/floris_app_icon"
             android:label="@string/floris_app_name"
             android:launchMode="singleTask"
             android:roundIcon="@mipmap/floris_app_icon_round"
-            android:targetActivity="dev.patrickgold.florisboard.app.FlorisAppActivity"
+            android:targetActivity=".app.FlorisAppActivity"
             android:theme="@style/FlorisAppTheme.Splash"
             android:exported="true">
             <intent-filter>
@@ -120,7 +120,7 @@
 
         <!-- Crash Dialog Activity -->
         <activity
-            android:name="dev.patrickgold.florisboard.lib.crashutility.CrashDialogActivity"
+            android:name=".lib.crashutility.CrashDialogActivity"
             android:icon="@mipmap/floris_app_icon"
             android:label="@string/crash_dialog__title"
             android:configChanges="orientation|screenSize"
@@ -128,7 +128,7 @@
 
         <!-- Copy to Clipboard Activity -->
         <activity
-            android:name="dev.patrickgold.florisboard.ime.clipboard.FlorisCopyToClipboardActivity"
+            android:name=".ime.clipboard.FlorisCopyToClipboardActivity"
             android:theme="@style/FlorisAppTheme.Transparent"
             android:exported="true">
             <intent-filter>
@@ -140,7 +140,7 @@
 
         <!-- Voice Permission Request Activity -->
         <activity
-            android:name="dev.patrickgold.florisboard.ime.voice.VoicePermissionActivity"
+            android:name=".ime.voice.VoicePermissionActivity"
             android:theme="@style/FlorisAppTheme.Transparent"
             android:exported="false"
             android:excludeFromRecents="true"
@@ -163,7 +163,7 @@
 
         <!-- Clipboard Media File Provider -->
         <provider
-            android:name="dev.patrickgold.florisboard.ime.clipboard.provider.ClipboardMediaProvider"
+            android:name=".ime.clipboard.provider.ClipboardMediaProvider"
             android:authorities="${applicationId}.provider.clipboard"
             android:grantUriPermissions="true"
             android:exported="false">

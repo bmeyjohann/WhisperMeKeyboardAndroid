@@ -41,7 +41,7 @@ val projectVersionNameSuffix = projectVersionName.substringAfter("-", "").let { 
 }
 
 android {
-    namespace = "dev.patrickgold.florisboard"
+    namespace = "app.whisperme.keyboard"
     compileSdk = projectCompileSdk.toInt()
     buildToolsVersion = projectBuildToolsVersion
     ndkVersion = projectNdkVersion
@@ -72,7 +72,7 @@ android {
         buildConfigField("String", "BUILD_COMMIT_HASH", "\"${getGitCommitHash()}\"")
         buildConfigField("String", "FLADDONS_API_VERSION", "\"v~draft2\"")
         buildConfigField("String", "FLADDONS_STORE_URL", "\"beta.addons.florisboard.org\"")
-        
+
         // Auth0 configuration
         manifestPlaceholders["auth0Domain"] = "@string/com_auth0_domain"
         manifestPlaceholders["auth0Scheme"] = "app.whisperme.keyboard"
@@ -231,7 +231,7 @@ dependencies {
     // Auth0 Android SDK
     implementation("com.auth0.android:auth0:2.11.0")
     implementation("com.auth0.android:jwtdecode:2.0.2")
-    
+
     // HTTP client for API requests with auth
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
