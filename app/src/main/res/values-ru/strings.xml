@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
-    <string name="app_name">FlorisBoard</string>
     <string name="key__phone_pause" comment="Label for the Pause key in the telephone keyboard layout">Пауза</string>
     <string name="key__phone_wait" comment="Label for the Wait key in the telephone keyboard layout">Ожидание</string>
     <string name="key_popup__threedots_alt" comment="Content description for the three-dots icon in a key popup">Значок троеточия. Если отображается, показывает, что можно использовать больше знаков при долгом нажатии.</string>
@@ -567,7 +566,7 @@
     <string name="send_to_clipboard__unknown_error">Неизвестная ошибка. Попробуйте еще раз!</string>
     <string name="send_to_clipboard__type_not_supported_error">Данный формат файла не поддерживается.</string>
     <string name="send_to_clipboard__android_version_to_old_error">Требуется более новая версия Android для этой функции.
-    
+
     </string>
     <string name="send_to_clipboard__description__copied_image_to_clipboard">Изображение ниже скопировано в буфер обмена.</string>
     <!-- Devtools strings -->
@@ -764,10 +763,10 @@
     <string name="enum__emoji_history_update_strategy__auto_sort_append" comment="Enum value label">Автоматическая сортировка (добавление в конец)</string>
     <string name="enum__emoji_history_update_strategy__auto_sort_append__description" comment="Enum value description">Автоматическое изменение порядка расположения эмодзи в зависимости от их использования. Новые эмодзи добавляются в конец.</string>
     <string name="enum__emoji_history_update_strategy__manual_sort_prepend" comment="Enum value label">Ручная сортировка (добавление в начало)</string>
-    <string name="enum__emoji_history_update_strategy__manual_sort_prepend__description" comment="Enum value description">Не происходит автоматической перестановки эмодзи в зависимости от их использования. 
+    <string name="enum__emoji_history_update_strategy__manual_sort_prepend__description" comment="Enum value description">Не происходит автоматической перестановки эмодзи в зависимости от их использования.
 Новые эмодзи добавляются в начало.</string>
     <string name="enum__emoji_history_update_strategy__manual_sort_append" comment="Enum value label">Ручная сортировка (добавление в конец)</string>
-    <string name="enum__emoji_history_update_strategy__manual_sort_append__description" comment="Enum value description">Не происходит автоматической перестановки эмодзи в зависимости от их использования. 
+    <string name="enum__emoji_history_update_strategy__manual_sort_append__description" comment="Enum value description">Не происходит автоматической перестановки эмодзи в зависимости от их использования.
 Новые эмодзи добавляются в конец.</string>
     <string name="enum__emoji_skin_tone__default" comment="Enum value label">Цвет кожи {emoji} по умолчанию</string>
     <string name="enum__emoji_skin_tone__light_skin_tone" comment="Enum value label">Светлый цвет кожи {emoji}</string>

@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
-    <string name="app_name">FlorisBoard</string>
     <string name="key__phone_pause" comment="Label for the Pause key in the telephone keyboard layout">Jeda</string>
     <string name="key__phone_wait" comment="Label for the Wait key in the telephone keyboard layout">Tunggu</string>
     <string name="key_popup__threedots_alt" comment="Content description for the three-dots icon in a key popup">Ikon titik tiga. Jika terlihat, menandakan bahwa lebih banyak huruf dapat digunakan jika ditekan lama.</string>
@@ -477,7 +476,7 @@ Klik di sini untuk menyelesaikan masalah ini.</string>
     <string name="setup__select_ime__description">{app_name} sekarang sudah diaktifkan di sistem Anda. Untuk menggunakannya secara aktif, beralihlah ke {app_name} dengan memilihnya di dialog pemilih input!</string>
     <string name="setup__select_ime__switch_keyboard_btn">Ubah Papan Ketik</string>
     <string name="setup__grant_notification_permission__title">Izinkan Notifikasi Pelaporan Crash</string>
-    <string name="setup__grant_notification_permission__description">Per-Android 13+, apl harus meminta izin untuk 
+    <string name="setup__grant_notification_permission__description">Per-Android 13+, apl harus meminta izin untuk
         mengirim notifikasi. Pada Florisboard, izin tersebut hanya digunakan untuk membuka jendela pelaporan crash pada saat terjadi crash.
         Izin ini dapat diubah kapanpun pada setelan sistem.
     </string>
