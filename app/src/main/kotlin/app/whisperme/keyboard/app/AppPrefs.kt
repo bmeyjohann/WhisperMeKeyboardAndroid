@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import app.whisperme.keyboard.app.settings.theme.DisplayKbdAfterDialogs
 import app.whisperme.keyboard.app.settings.theme.SnyggLevel
+import app.whisperme.keyboard.app.settings.voiceinput.VoiceLlmProvider
+import app.whisperme.keyboard.app.settings.voiceinput.VoiceTranscriptionProvider
 import app.whisperme.keyboard.app.setup.NotificationPermissionState
 import app.whisperme.keyboard.ime.clipboard.CLIPBOARD_HISTORY_NUM_GRID_COLUMNS_AUTO
 import app.whisperme.keyboard.ime.core.DisplayLanguageNamesIn
@@ -769,6 +771,32 @@ class AppPrefs : PreferenceModel("florisboard-app-prefs") {
         val editorLevel = enum(
             key = "theme__editor_level",
             default = SnyggLevel.ADVANCED,
+        )
+    }
+
+    val voiceInput = VoiceInput()
+    inner class VoiceInput {
+        val llmModel = string(key = "voice_input__llm_model", default = "")
+        val reasoningEffort = string(key = "voice_input__reasoning_effort", default = "default")
+        val transcriptionModel = string(key = "voice_input__transcription_model", default = "")
+        val realtimeEndpoint = string(key = "voice_input__realtime_endpoint", default = "wss://process-voice.whisperme.app/realtime")
+        val mode = string(key = "voice_input__mode", default = "auto")
+        val preferenceProfiles = string(key = "voice_input__preference_profiles", default = "[]")
+        val dictionary = string(key = "voice_input__dictionary", default = "[]")
+        val appCategories = string(key = "voice_input__app_categories", default = "{}")
+        val useDictionary = boolean(key = "voice_input__use_dictionary", default = false)
+        val suggestPreferences = boolean(key = "voice_input__suggest_preferences", default = true)
+        val usePreferences = boolean(key = "voice_input__use_preferences", default = false)
+        val diagnosticContext = boolean(key = "voice_input__diagnostic_context", default = false)
+        val liveHints = boolean(key = "voice_input__live_hints", default = false)
+        val transcriptionProvider = enum(
+            key = "voice_input__transcription_provider",
+            default = VoiceTranscriptionProvider.MUSE_REALTIME,
+        )
+        val llmProvider = enum(
+            key = "voice_input__llm_provider",
+            // Only unset preferences migrate: persisted explicit providers remain deliberate choices.
+            default = VoiceLlmProvider.SERVER_DEFAULT,
         )
     }
 

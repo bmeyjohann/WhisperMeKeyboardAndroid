@@ -19,7 +19,7 @@ package app.whisperme.keyboard.lib.util
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.widget.Toast
+import org.florisboard.lib.android.showLongToast
 import androidx.annotation.StringRes
 import app.whisperme.keyboard.R
 import app.whisperme.keyboard.lib.devtools.flogError
@@ -40,11 +40,7 @@ fun Context.launchUrl(url: String) {
         this.startActivity(intent)
     } catch (e: ActivityNotFoundException) {
         flogError { e.toString() }
-        Toast.makeText(
-            this,
-            this.stringRes(R.string.general__no_browser_app_found_for_url, "url" to url),
-            Toast.LENGTH_LONG,
-        ).show()
+        showLongToast(R.string.general__no_browser_app_found_for_url, "url" to url)
     }
 }
 
@@ -66,7 +62,7 @@ inline fun <T : Any> Context.launchActivity(kClass: KClass<T>, intentModifier: (
         this.startActivity(intent)
     } catch (e: ActivityNotFoundException) {
         flogError { e.toString() }
-        Toast.makeText(this, e.localizedMessage, Toast.LENGTH_LONG).show()
+        showLongToast(e.localizedMessage ?: "Could not open application")
     }
 }
 
@@ -80,6 +76,6 @@ inline fun Context.launchActivity(intentModifier: (Intent) -> Unit) {
         this.startActivity(intent)
     } catch (e: ActivityNotFoundException) {
         flogError { e.toString() }
-        Toast.makeText(this, e.localizedMessage, Toast.LENGTH_LONG).show()
+        showLongToast(e.localizedMessage ?: "Could not open application")
     }
 }

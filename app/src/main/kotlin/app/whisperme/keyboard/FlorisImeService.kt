@@ -339,20 +339,28 @@ class FlorisImeService : LifecycleInputMethodService() {
     }
 
     override fun onStartInput(info: EditorInfo?, restarting: Boolean) {
+        if (!restarting) keyboardManager.onVoiceFieldChanged()
         flogInfo { "restarting=$restarting info=${info?.debugSummarize()}" }
         super.onStartInput(info, restarting)
         if (info == null) return
         val editorInfo = FlorisEditorInfo.wrap(info)
         editorInstance.handleStartInput(editorInfo)
+        keyboardManager.onVoiceInputStarted(info, restarting)
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
+        app.whisperme.keyboard.app.auth.Auth0Manager.getInstance(this).checkSessionBeforeUse()
         flogInfo { "restarting=$restarting info=${info?.debugSummarize()}" }
         super.onStartInputView(info, restarting)
         if (info == null) return
         val editorInfo = FlorisEditorInfo.wrap(info)
+        keyboardManager.onVoiceInputStarted(info, restarting)
         activeState.batchEdit {
-            activeState.imeUiMode = ImeUiMode.TEXT
+            activeState.imeUiMode = if (keyboardManager.isVoiceRecording.value ||
+                keyboardManager.isVoiceProcessing.value || keyboardManager.isVoiceRetryable.value ||
+                keyboardManager.voiceFinalText.value != null) {
+                ImeUiMode.VOICE_RECORDING
+            } else ImeUiMode.TEXT
             activeState.isSelectionMode = editorInfo.initialSelection.isSelectionMode
             editorInstance.handleStartInputView(editorInfo, isRestart = restarting)
         }
@@ -376,6 +384,7 @@ class FlorisImeService : LifecycleInputMethodService() {
                 composing = EditorRange.normalized(candidatesStart, candidatesEnd),
             )
         }
+        keyboardManager.onPreferenceFieldUpdated()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -388,6 +397,7 @@ class FlorisImeService : LifecycleInputMethodService() {
     }
 
     override fun onFinishInput() {
+        keyboardManager.onVoiceFieldChanged()
         flogInfo { "(no args)" }
         super.onFinishInput()
         editorInstance.handleFinishInput()
@@ -396,6 +406,7 @@ class FlorisImeService : LifecycleInputMethodService() {
 
     override fun onWindowShown() {
         super.onWindowShown()
+        keyboardManager.prepareVoiceAudio()
         if (isWindowShown) {
             flogWarning(LogTopic.IMS_EVENTS) { "Ignoring (is already shown)" }
             return
@@ -666,7 +677,9 @@ class FlorisImeService : LifecycleInputMethodService() {
             ImeUiMode.MEDIA -> MediaInputLayout()
             ImeUiMode.CLIPBOARD -> ClipboardInputLayout()
             ImeUiMode.VOICE -> VoiceInputLayout()
-            ImeUiMode.VOICE_RECORDING -> VoiceRecordingLayout()
+            ImeUiMode.VOICE_RECORDING -> VoiceRecordingLayout(
+                processingStatus = keyboardManager.voiceProcessingStatus.collectAsState().value.takeIf { it.isNotBlank() },
+            )
                             }
                         }
                     }

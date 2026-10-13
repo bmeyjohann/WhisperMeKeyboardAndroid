@@ -91,9 +91,29 @@ private val NoAnimationTween = tween<Float>(0)
 
 @Composable
 fun Smartbar() {
+    val authContext = LocalContext.current
+    val auth = app.whisperme.keyboard.app.auth.Auth0Manager.getInstance(authContext)
+    val session by auth.sessionStatus.collectAsState()
+    val voiceManager by authContext.keyboardManager()
+    val recording by voiceManager.isVoiceRecording.collectAsState()
+    val processing by voiceManager.isVoiceProcessing.collectAsState()
+    val suggestion by voiceManager.preferenceSuggestion.collectAsState()
+    val editorOpen by voiceManager.preferenceEditorOpen.collectAsState()
+    if (!recording && !processing && suggestion != null && editorOpen) {
+        app.whisperme.keyboard.ime.voice.PreferenceSuggestionDialog()
+        return
+    }
+    if (!recording && !processing && session != app.whisperme.keyboard.app.auth.Auth0Manager.SessionStatus.READY) {
+        app.whisperme.keyboard.app.auth.SessionNotice(auth) { app.whisperme.keyboard.FlorisImeService.launchSettings() }
+        return
+    }
     val prefs by florisPreferenceModel()
     val smartbarEnabled by prefs.smartbar.enabled.observeAsState()
     val extendedActionsPlacement by prefs.smartbar.extendedActionsPlacement.observeAsState()
+
+    if (!recording && !processing && suggestion != null) {
+        app.whisperme.keyboard.ime.voice.PreferenceSuggestionDialog()
+    }
 
     AnimatedVisibility(
         visible = smartbarEnabled,

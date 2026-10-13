@@ -20,6 +20,12 @@ endif()
 
 add_library(fl_native SHARED src/lib.c)
 
+# NDK 26 needs explicit ELF and RELRO alignment for Android's 16 KB page devices.
+target_link_options(fl_native PRIVATE
+    "-Wl,-z,max-page-size=16384"
+    "-Wl,-z,common-page-size=16384"
+)
+
 if(CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
     set(ANDROID_TARGET "armv7a-linux-androideabi")
     set(RUST_TARGET "armv7-linux-androideabi")

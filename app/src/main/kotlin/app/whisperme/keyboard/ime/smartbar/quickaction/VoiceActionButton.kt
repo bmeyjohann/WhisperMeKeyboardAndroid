@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
@@ -53,9 +52,10 @@ import app.whisperme.keyboard.FlorisImeService
 import app.whisperme.keyboard.ime.keyboard.ComputingEvaluator
 import app.whisperme.keyboard.ime.text.keyboard.TextKeyData
 import app.whisperme.keyboard.ime.theme.FlorisImeUi
+import app.whisperme.keyboard.ime.voice.WhispermeLogoIcon
 import app.whisperme.keyboard.keyboardManager
-import org.florisboard.lib.snygg.SnyggSelector
 import org.florisboard.lib.snygg.ui.SnyggBox
+import org.florisboard.lib.snygg.SnyggSelector
 import org.florisboard.lib.snygg.ui.SnyggIcon
 
 enum class VoiceButtonState {
@@ -114,9 +114,7 @@ fun VoiceActionButton(
     // being stuck in the pressed state
     DisposableEffect(action, isEnabled) {
         onDispose {
-            if (action is QuickAction.InsertKey) {
-                action.onPointerCancel(context)
-            }
+            keyboardManager.voiceButtonUp(0, canceled = true)
         }
     }
 
@@ -137,18 +135,24 @@ fun VoiceActionButton(
                             val press = PressInteraction.Press(down.position)
                             inputFeedbackController?.keyPress(TextKeyData.UNSPECIFIED)
                             interactionSource.tryEmit(press)
-                            android.util.Log.d("VoiceActionButton", "Calling action.onPointerDown")
-                            action.onPointerDown(context)
-                            val up = waitForUpOrCancellation()
-                            if (up != null) {
-                                up.consume()
-                                interactionSource.tryEmit(PressInteraction.Release(press))
-                                android.util.Log.d("VoiceActionButton", "Calling action.onPointerUp")
-                                action.onPointerUp(context)
-                            } else {
-                                interactionSource.tryEmit(PressInteraction.Cancel(press))
-                                android.util.Log.d("VoiceActionButton", "Calling action.onPointerCancel")
-                                action.onPointerCancel(context)
+                            keyboardManager.voiceButtonDown()
+                            var released = false
+                            try {
+                                val up = waitForUpOrCancellation()
+                                if (up != null) {
+                                    up.consume()
+                                    interactionSource.tryEmit(PressInteraction.Release(press))
+                                    released = true
+                                    keyboardManager.voiceButtonUp(up.uptimeMillis - down.uptimeMillis)
+                                } else {
+                                    interactionSource.tryEmit(PressInteraction.Cancel(press))
+                                    keyboardManager.voiceButtonUp(0, canceled = true)
+                                }
+                            } finally {
+                                if (!released) {
+                                    interactionSource.tryEmit(PressInteraction.Cancel(press))
+                                    keyboardManager.voiceButtonUp(0, canceled = true)
+                                }
                             }
                         }
                     }
@@ -163,9 +167,8 @@ fun VoiceActionButton(
                             attributes = attributes,
                             selector = selector,
                         ) {
-                            SnyggIcon(
-                                imageVector = Icons.Default.Mic,
-                                modifier = Modifier.size(24.dp)
+                            WhispermeLogoIcon(
+                                modifier = Modifier.size(30.dp)
                             )
                         }
                     }

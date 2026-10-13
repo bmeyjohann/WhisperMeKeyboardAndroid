@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -141,10 +140,16 @@ fun VoiceInputLayout(
                             },
                             modifier = Modifier.size(72.dp),
                         ) {
-                            SnyggIcon(
-                                imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
-                                modifier = Modifier.size(48.dp),
-                            )
+                            if (isRecording) {
+                                SnyggIcon(
+                                    imageVector = Icons.Default.Stop,
+                                    modifier = Modifier.size(48.dp),
+                                )
+                            } else {
+                                WhispermeLogoIcon(
+                                    modifier = Modifier.size(48.dp),
+                                )
+                            }
                         }
                     }
                 }

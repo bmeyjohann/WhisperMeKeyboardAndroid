@@ -16,7 +16,7 @@
 
 package app.whisperme.keyboard.app.settings.about
 
-import android.widget.Toast
+import org.florisboard.lib.android.showShortToast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -85,13 +85,9 @@ fun AboutScreen() = FlorisScreen {
             onClick = {
                 try {
                     clipboardManager.addNewPlaintext(appVersion)
-                    Toast.makeText(context, R.string.about__version_copied__title, Toast.LENGTH_SHORT).show()
+                    context.showShortToast(R.string.about__version_copied__title)
                 } catch (e: Throwable) {
-                    Toast.makeText(
-                        context,
-                        context.stringRes(R.string.about__version_copied__error, "error_message" to e.message),
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    context.showShortToast(R.string.about__version_copied__error, "error_message" to e.message)
                 }
             },
         )

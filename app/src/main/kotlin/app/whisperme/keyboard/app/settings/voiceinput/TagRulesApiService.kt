@@ -73,7 +73,6 @@ class TagRulesApiService(private val context: Context) {
         try {
             println("DEBUG: Checking authentication...")
             val token = authManager.getValidAccessToken()
-            println("DEBUG: Access token prefix: ${token?.take(20)}...")
 
             if (token.isNullOrEmpty()) {
                 println("DEBUG: No auth token available")
@@ -82,7 +81,6 @@ class TagRulesApiService(private val context: Context) {
             }
 
             println("DEBUG: Making API request to $baseUrl/api/tag-rules")
-            println("DEBUG: Token: ${token.take(10)}...")
 
             val request = Request.Builder()
                 .url("$baseUrl/api/tag-rules")

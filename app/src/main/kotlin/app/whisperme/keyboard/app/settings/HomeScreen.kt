@@ -16,232 +16,58 @@
 
 package app.whisperme.keyboard.app.settings
 
+import androidx.compose.runtime.*
+import androidx.compose.material3.*
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Assignment
-import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Gesture
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.SentimentSatisfiedAlt
-import androidx.compose.material.icons.filled.SmartButton
-import androidx.compose.material.icons.filled.Spellcheck
-import androidx.compose.material.icons.outlined.Build
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Keyboard
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material3.Text
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.ui.Alignment
-import androidx.compose.runtime.remember
-import androidx.activity.ComponentActivity
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import app.whisperme.keyboard.R
 import app.whisperme.keyboard.app.LocalNavController
 import app.whisperme.keyboard.app.Routes
-import app.whisperme.keyboard.app.auth.Auth0Manager
-import app.whisperme.keyboard.lib.compose.FlorisErrorCard
 import app.whisperme.keyboard.lib.compose.FlorisScreen
-import app.whisperme.keyboard.lib.compose.FlorisWarningCard
-import app.whisperme.keyboard.lib.compose.stringRes
 import app.whisperme.keyboard.lib.util.InputMethodUtils
-import dev.patrickgold.jetpref.datastore.model.observeAsState
 import dev.patrickgold.jetpref.datastore.ui.Preference
 
 @Composable
-fun HomeScreen() = FlorisScreen {
-    title = stringRes(R.string.settings__home__title)
-    navigationIconVisible = false
-    previewFieldVisible = true
-
-    val navController = LocalNavController.current
-    val context = LocalContext.current
-
+fun KeyboardSettingsScreen() = FlorisScreen {
+    title = "Keyboard settings"
+    previewFieldVisible = false
+    val nav = LocalNavController.current
     content {
-        val isCollapsed by prefs.internal.homeIsBetaToolboxCollapsed.observeAsState()
-
-        // Auth0 user info
-        val authManager = remember { Auth0Manager.getInstance(context) }
-        val isAuthenticated by authManager.isAuthenticated.collectAsState()
-        val userProfile by authManager.userProfile.collectAsState()
-
-        val isFlorisBoardEnabled by InputMethodUtils.observeIsFlorisboardEnabled(foregroundOnly = true)
-        val isFlorisBoardSelected by InputMethodUtils.observeIsFlorisboardSelected(foregroundOnly = true)
-        if (!isFlorisBoardEnabled) {
-            FlorisErrorCard(
-                modifier = Modifier.padding(8.dp),
-                showIcon = false,
-                text = stringRes(R.string.settings__home__ime_not_enabled),
-                onClick = { InputMethodUtils.showImeEnablerActivity(context) },
-            )
-        } else if (!isFlorisBoardSelected) {
-            FlorisWarningCard(
-                modifier = Modifier.padding(8.dp),
-                showIcon = false,
-                text = stringRes(R.string.settings__home__ime_not_selected),
-                onClick = { InputMethodUtils.showImePicker(context) },
-            )
+        KeyboardSetupStatus()
+        Preference(title = "Languages and layouts", onClick = { nav.navigate(Routes.Settings.Localization) })
+        Preference(title = "Keyboard appearance", onClick = { nav.navigate(Routes.Settings.Theme) })
+        Preference(title = "Size and key feedback", onClick = { nav.navigate(Routes.Settings.Keyboard) })
+        var advanced by remember { mutableStateOf(false) }
+        TextButton(onClick = { advanced = !advanced }, modifier = Modifier.padding(8.dp)) {
+            Text(if (advanced) "Hide advanced settings" else "Advanced settings")
         }
-
-        // User Account Section
-        if (isAuthenticated && userProfile != null) {
-            Card(
-                modifier = Modifier.padding(8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Signed in as",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = userProfile?.name ?: userProfile?.email ?: "User",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            userProfile?.email?.let { email ->
-                                if (userProfile?.name != null) {
-                                    Text(
-                                        text = email,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        /*Card(modifier = Modifier.padding(8.dp)) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Welcome to the 0.4 alpha series!",
-                        style = MaterialTheme.typography.subtitle1,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Spacer(modifier = Modifier.weight(1.0f))
-                    IconButton(onClick = { this@content.prefs.internal.homeIsBetaToolboxCollapsed.set(!isCollapsed) }) {
-                        Icon(
-                            painter = painterResource(if (isCollapsed) {
-                                R.drawable.ic_keyboard_arrow_down
-                            } else {
-                                R.drawable.ic_keyboard_arrow_up
-                            }),
-                            contentDescription = null,
-                        )
-                    }
-                }
-                if (!isCollapsed) {
-                    Text("0.4 will be quite a big release and finally work on adding support for word suggestion and inline autocorrect within the keyboard UI, at first for Latin-based languages. Additionally general improvements and bug fixes will also be made.\n")
-                    Text("Currently the alpha releases are preparations for the suggestions implementation and general improvements and bug fixes.\n")
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Note that this release does not contain support for word suggestions (will show the current word plus numbers as a placeholder).", color = Color.Red)
-                    Text("Please DO NOT file an issue for this. It is already more than known and a major goal for implementation in 0.4.0. Thank you!\n")
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-            }
-        }*/
-        Preference(
-            icon = Icons.Default.Language,
-            title = stringRes(R.string.settings__localization__title),
-            onClick = { navController.navigate(Routes.Settings.Localization) },
-        )
-        Preference(
-            icon = Icons.Outlined.Palette,
-            title = stringRes(R.string.settings__theme__title),
-            onClick = { navController.navigate(Routes.Settings.Theme) },
-        )
-        Preference(
-            icon = Icons.Default.SmartButton,
-            title = "Voice Input",
-            summary = "Manage voice input rules and settings",
-            onClick = { navController.navigate(Routes.Settings.VoiceInput) },
-        )
-        Preference(
-            icon = Icons.Outlined.Keyboard,
-            title = stringRes(R.string.settings__keyboard__title),
-            onClick = { navController.navigate(Routes.Settings.Keyboard) },
-        )
-        Preference(
-            icon = Icons.Default.SmartButton,
-            title = stringRes(R.string.settings__smartbar__title),
-            onClick = { navController.navigate(Routes.Settings.Smartbar) },
-        )
-        Preference(
-            icon = Icons.Default.Spellcheck,
-            title = stringRes(R.string.settings__typing__title),
-            onClick = { navController.navigate(Routes.Settings.Typing) },
-        )
-        Preference(
-            icon = Icons.Default.Gesture,
-            title = stringRes(R.string.settings__gestures__title),
-            onClick = { navController.navigate(Routes.Settings.Gestures) },
-        )
-        Preference(
-            icon = Icons.AutoMirrored.Outlined.Assignment,
-            title = stringRes(R.string.settings__clipboard__title),
-            onClick = { navController.navigate(Routes.Settings.Clipboard) },
-        )
-        Preference(
-            icon = Icons.Default.SentimentSatisfiedAlt,
-            title = stringRes(R.string.settings__media__title),
-            onClick = { navController.navigate(Routes.Settings.Media) },
-        )
-        Preference(
-            icon = Icons.Default.Extension,
-            title = stringRes(R.string.ext__home__title),
-            onClick = { navController.navigate(Routes.Ext.Home) },
-        )
-        Preference(
-            icon = Icons.Outlined.Build,
-            title = stringRes(R.string.settings__other__title),
-            onClick = { navController.navigate(Routes.Settings.Other) },
-        )
-        Preference(
-            icon = Icons.Outlined.Info,
-            title = stringRes(R.string.about__title),
-            onClick = { navController.navigate(Routes.Settings.About) },
-        )
-
-        // Logout option - only show if authenticated
-        if (isAuthenticated) {
-            Preference(
-                icon = Icons.Default.Logout,
-                title = "Sign Out",
-                summary = "Sign out of your WhisperMe account",
-                onClick = {
-                    if (context is ComponentActivity) {
-                        authManager.logout(context) { success, error ->
-                            if (success) {
-                                navController.navigate(Routes.Auth.Login) {
-                                    popUpTo(Routes.Settings.Home) { inclusive = true }
-                                }
-                            }
-                        }
-                    }
-                },
-            )
+        if (advanced) {
+            listOf("Toolbar" to Routes.Settings.Smartbar, "Typing" to Routes.Settings.Typing,
+                "Gestures" to Routes.Settings.Gestures, "Clipboard" to Routes.Settings.Clipboard,
+                "Emoji and media" to Routes.Settings.Media, "Extensions" to Routes.Ext.Home,
+                "Backup and other settings" to Routes.Settings.Other, "About and licenses" to Routes.Settings.About
+            ).forEach { (label, route) -> Preference(title = label, onClick = { nav.navigate(route) }) }
         }
     }
+}
+
+@Composable
+internal fun KeyboardSetupStatus() {
+    val context = LocalContext.current
+    val enabled by InputMethodUtils.observeIsFlorisboardEnabled(foregroundOnly = true)
+    val selected by InputMethodUtils.observeIsFlorisboardSelected(foregroundOnly = true)
+    if (!enabled) Preference(title = "Enable WhisperMe keyboard", summary = "One-time setup to start dictating.",
+        onClick = { InputMethodUtils.showImeEnablerActivity(context) })
+    else if (!selected) Preference(title = "Select WhisperMe keyboard", summary = "Choose WhisperMe to use the microphone in any app.",
+        onClick = { InputMethodUtils.showImePicker(context) })
+}
+
+@Composable
+internal fun VoiceAccountSettings() {
+    val nav = LocalNavController.current
+    Preference(title = "Account and usage", summary = "Sign-in, balance, reset date and voice setup.",
+        onClick = { nav.navigate(Routes.Settings.Account) })
+    Preference(title = "Help and feedback", summary = "Report a bug or share an idea without attaching your transcripts.",
+        onClick = { nav.navigate(Routes.Settings.Feedback) })
 }

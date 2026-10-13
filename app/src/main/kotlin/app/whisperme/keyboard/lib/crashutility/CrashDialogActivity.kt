@@ -16,6 +16,8 @@
 
 package app.whisperme.keyboard.lib.crashutility
 
+import org.florisboard.lib.android.showShortToast
+
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -25,7 +27,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
-import android.widget.Toast
 import android.widget.Toolbar
 import androidx.activity.ComponentActivity
 import app.whisperme.keyboard.BuildConfig
@@ -121,7 +122,7 @@ class CrashDialogActivity : ComponentActivity() {
             } else {
                 resources.getString(R.string.crash_dialog__copy_to_clipboard_failure)
             }
-            Toast.makeText(this, toastMessage, Toast.LENGTH_SHORT).show()
+            showShortToast(toastMessage)
         }
 
         openBugReportForm.setOnClickListener {

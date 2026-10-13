@@ -87,6 +87,9 @@ object Routes {
 
     object Settings {
         const val Home = "settings"
+        const val KeyboardSettings = "settings/keyboard-settings"
+        const val Account = "settings/account"
+        const val Feedback = "settings/help-feedback"
 
         const val Localization = "settings/localization"
         const val SelectLocale = "settings/localization/select-locale"
@@ -224,6 +227,9 @@ object Routes {
             composable(Setup.Screen) { SetupScreen() }
 
             composableWithDeepLink(Settings.Home) { HomeScreen() }
+            composableWithDeepLink(Settings.KeyboardSettings) { app.whisperme.keyboard.app.settings.KeyboardSettingsScreen() }
+            composableWithDeepLink(Settings.Account) { app.whisperme.keyboard.app.account.AccountScreen() }
+            composableWithDeepLink(Settings.Feedback) { app.whisperme.keyboard.app.account.FeedbackScreen() }
 
             composableWithDeepLink(Settings.Localization) { LocalizationScreen() }
             composableWithDeepLink(Settings.SelectLocale) { SelectLocaleScreen() }

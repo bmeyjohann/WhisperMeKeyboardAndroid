@@ -1,0 +1,6 @@
+<resources>
+    <!-- The generated test variant inherits launcher aliases without the app's mipmap assets. -->
+    <item name="ic_launcher_foreground" type="mipmap">@android:drawable/sym_def_app_icon</item>
+    <item name="ic_launcher" type="mipmap">@android:drawable/sym_def_app_icon</item>
+    <item name="ic_launcher_round" type="mipmap">@android:drawable/sym_def_app_icon</item>
+</resources>

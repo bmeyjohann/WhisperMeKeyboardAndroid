@@ -17,7 +17,7 @@
 package app.whisperme.keyboard.app.settings.theme
 
 import android.icu.lang.UCharacter
-import android.widget.Toast
+import org.florisboard.lib.android.ToastHandle
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.RepeatMode
@@ -385,7 +385,7 @@ private fun EditCodeValueDialog(
     val isFlorisBoardSelected by InputMethodUtils.observeIsFlorisboardSelected(foregroundOnly = true)
 
     var isRecordingKey by remember { mutableStateOf(false) }
-    var lastRecordingToast by remember { mutableStateOf<Toast?>(null) }
+    var lastRecordingToast by remember { mutableStateOf<ToastHandle?>(null) }
     val recordingKeyColor = if (isRecordingKey) {
         rememberInfiniteTransition().animateColor(
             initialValue = LocalContentColor.current,

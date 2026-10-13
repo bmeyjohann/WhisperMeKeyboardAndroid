@@ -15,9 +15,28 @@ import com.auth0.android.result.UserProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import app.whisperme.keyboard.R
 
 class Auth0Manager private constructor(context: Context) {
+    enum class SessionStatus { CHECKING, READY, SIGN_IN_REQUIRED, RETRY }
+    private val _sessionStatus = MutableStateFlow(SessionStatus.CHECKING)
+    val sessionStatus: StateFlow<SessionStatus> = _sessionStatus.asStateFlow()
+    private val sessionScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    private var sessionCheck: kotlinx.coroutines.Job? = null
+
+    @Synchronized fun checkSessionBeforeUse() {
+        if (sessionCheck?.isActive == true) return
+        sessionCheck = sessionScope.launch {
+            try {
+                kotlinx.coroutines.withTimeout(15_000) { getBackendAccessToken() }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                _sessionStatus.value = SessionStatus.RETRY
+            }
+        }
+    }
+    private val localContext = context.applicationContext
+    private val localMode = LocalVoiceSession.configured(context)
     private val account: Auth0
     private val credentialsManager: CredentialsManager
     private val authenticationApiClient: AuthenticationAPIClient
@@ -35,7 +54,21 @@ class Auth0Manager private constructor(context: Context) {
     private val _tokenExpirationTime = MutableStateFlow<Long?>(null)
 
     // Track if refresh is currently in progress to prevent concurrent refreshes
-    private var refreshInProgress = false
+    private val refreshMutex = kotlinx.coroutines.sync.Mutex()
+    private val backendSessionMutex = kotlinx.coroutines.sync.Mutex()
+    @Volatile var backendDefaultLlmProvider: String? = null
+        private set
+    private val _backendDefaultLlmModel = MutableStateFlow<String?>(null)
+    val backendDefaultLlmModel = _backendDefaultLlmModel.asStateFlow()
+    @Volatile var backendSupportsResumeTranscript: Boolean = false
+        private set
+    @Volatile var backendSupportsHeartbeat: Boolean = false
+        private set
+    @Volatile var backendSupportsProcessTranscript: Boolean = false
+        private set
+    @Volatile var backendSupportsInsertOnly: Boolean = false
+        private set
+
 
     // Callback for when authentication state changes
     private var authStateChangeCallback: ((Boolean) -> Unit)? = null
@@ -47,6 +80,7 @@ class Auth0Manager private constructor(context: Context) {
     ) {
         val wasAuthenticated = _isAuthenticated.value
         _isAuthenticated.value = true
+        _sessionStatus.value = SessionStatus.READY
         _accessToken.value = credentials.accessToken
         _tokenExpirationTime.value = credentials.expiresAt?.time
 
@@ -64,6 +98,7 @@ class Auth0Manager private constructor(context: Context) {
     private fun clearAuthenticationState(notifyChange: Boolean) {
         val wasAuthenticated = _isAuthenticated.value
         _isAuthenticated.value = false
+        _sessionStatus.value = SessionStatus.SIGN_IN_REQUIRED
         _accessToken.value = null
         _userProfile.value = null
         _tokenExpirationTime.value = null
@@ -94,10 +129,11 @@ class Auth0Manager private constructor(context: Context) {
         Log.d("Auth0Manager", "Using scheme: app.whisperme.keyboard")
 
         // Check if user is already authenticated
-        checkAuthentication()
+        checkSessionBeforeUse()
     }
 
     private fun checkAuthentication() {
+        if (localMode) { _isAuthenticated.value = LocalVoiceSession.active(localContext); return }
         if (credentialsManager.hasValidCredentials()) {
             credentialsManager.getCredentials(object : Callback<Credentials, CredentialsManagerException> {
                 override fun onSuccess(result: Credentials) {
@@ -121,6 +157,7 @@ class Auth0Manager private constructor(context: Context) {
     }
 
     fun refreshTokenOnAppStartup(callback: (Boolean) -> Unit) {
+        if (localMode) { callback(LocalVoiceSession.active(localContext)); return }
         Log.d("Auth0Manager", "Attempting token refresh on app startup")
         if (!credentialsManager.hasValidCredentials()) {
             Log.d("Auth0Manager", "No credentials to refresh")
@@ -148,6 +185,7 @@ class Auth0Manager private constructor(context: Context) {
     }
 
     fun login(activity: ComponentActivity, callback: (Boolean, String?) -> Unit) {
+        if (localMode) { callback(false, "Remove the local test session before signing in"); return }
         val packageName = activity.packageName
         val domain = activity.getString(R.string.com_auth0_domain)
         val scheme = "app.whisperme.keyboard"
@@ -245,6 +283,7 @@ class Auth0Manager private constructor(context: Context) {
      * This is the proper way to ensure fresh tokens before API calls.
      */
     fun getFreshCredentials(callback: (Boolean) -> Unit) {
+        if (localMode) { callback(false); return }
         credentialsManager.getCredentials(object : Callback<Credentials, CredentialsManagerException> {
             override fun onSuccess(result: Credentials) {
                 Log.d("Auth0Manager", "Fresh credentials obtained successfully")
@@ -301,95 +340,93 @@ class Auth0Manager private constructor(context: Context) {
     }
 
     private fun shouldClearCredentials(error: CredentialsManagerException): Boolean {
-        val message = error.message?.lowercase() ?: return false
-        return message.contains("refresh_token") ||
-            message.contains("unauthorized") ||
-            message.contains("invalid_grant") ||
-            message.contains("no credentials")
+        return sessionNeedsSignIn(error)
     }
 
     /**
      * Smart token refresh that only refreshes when needed.
      * Call this before making API requests to ensure fresh tokens.
      */
-    suspend fun ensureFreshToken(): Boolean {
-        if (refreshInProgress) {
-            Log.d("Auth0Manager", "Token refresh already in progress, waiting...")
-            // Wait a bit and check again (simple debouncing)
-            kotlinx.coroutines.delay(100)
-            return _accessToken.value != null
-        }
+    suspend fun ensureFreshToken(): Boolean = getValidAccessToken() != null
 
-        val hasStoredCredentials = credentialsManager.hasValidCredentials()
-        val tokenMissing = _accessToken.value.isNullOrEmpty()
-        val expirationTime = _tokenExpirationTime.value
-        val needsRefresh = tokenMissing || !hasStoredCredentials || expirationTime == null || isTokenNearExpiration()
-
-        return if (needsRefresh) {
-            Log.d("Auth0Manager", "Refreshing credentials via CredentialsManager")
-            refreshTokenSafely(fetchProfile = false)
-        } else {
-            Log.d("Auth0Manager", "Token is still valid, no refresh needed")
-            true
+    suspend fun getValidAccessToken(forceRefresh: Boolean = false): String? {
+        if (localMode) return null
+        refreshMutex.lock()
+        return try {
+            val credentials = credentialsManager.awaitCredentials(null, 60, emptyMap(), forceRefresh)
+            updateStateFromCredentials(credentials, fetchProfile = _userProfile.value == null, notifyChange = true)
+            credentials.accessToken
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: CredentialsManagerException) {
+            if (shouldClearCredentials(e) || sessionHasNoRenewableCredentials(e)) {
+                clearAuthenticationState(notifyChange = true)
+            } else {
+                _sessionStatus.value = SessionStatus.RETRY
+            }
+            null
+        } finally {
+            refreshMutex.unlock()
         }
     }
 
-    suspend fun getValidAccessToken(): String? {
-        return if (ensureFreshToken()) {
-            _accessToken.value
-        } else {
+    /** Backend acceptance is required before opening the microphone, even for unexpired JWTs. */
+    suspend fun getBackendAccessToken(capabilitiesUrl: String = "https://process-voice.whisperme.app/capabilities"): String? {
+        backendSessionMutex.lock()
+        return try { checkBackendAccessToken(capabilitiesUrl) } finally { backendSessionMutex.unlock() }
+    }
+
+    private suspend fun checkBackendAccessToken(capabilitiesUrl: String): String? {
+        var supportsInsertOnly = false
+        backendSupportsHeartbeat = false
+        backendSupportsResumeTranscript = false
+        backendSupportsProcessTranscript = false
+        return try {
+            require(localMode || java.net.URI(capabilitiesUrl).scheme == "https") { "Backend authentication requires HTTPS" }
+            val result = validateBackendSession(
+                token = { force -> if (localMode) LocalVoiceSession.token(localContext) else getValidAccessToken(force) },
+                accepts = { token -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val connection = java.net.URL(if (localMode) "http://127.0.0.1:8877/capabilities" else capabilitiesUrl)
+                        .openConnection() as java.net.HttpURLConnection
+                    try {
+                        connection.connectTimeout = 4_000
+                        connection.readTimeout = 4_000
+                        connection.instanceFollowRedirects = false
+                        connection.setRequestProperty("Authorization", "Bearer $token")
+                        val status = connection.responseCode
+                        if (status in 200..299) {
+                            val body = connection.inputStream.bufferedReader().use { it.readText() }
+                            supportsInsertOnly = backendAllowsInsertOnly(body)
+                            val capabilities = org.json.JSONObject(body)
+                            val features = capabilities.optJSONObject("features")
+                            backendDefaultLlmProvider = capabilities.optJSONObject("defaults")?.optString("llmProvider")
+                            _backendDefaultLlmModel.value = capabilities.optJSONObject("defaults")?.optString("llmModel")
+                            backendSupportsHeartbeat = features?.optBoolean("connectionHeartbeat") == true
+                            backendSupportsResumeTranscript = features?.optBoolean("resumeTranscript") == true
+                            backendSupportsProcessTranscript = features?.optBoolean("processTranscript") == true
+                        }
+                        status
+                    } finally { connection.disconnect() }
+                } })
+            when (result) {
+                is BackendSession.Accepted -> { backendSupportsInsertOnly = supportsInsertOnly; _sessionStatus.value = SessionStatus.READY; result.token }
+                BackendSession.Rejected -> { requireSignIn(); null }
+                BackendSession.Retry -> { _sessionStatus.value = SessionStatus.RETRY; null }
+                BackendSession.NoToken -> null
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            _sessionStatus.value = SessionStatus.RETRY
+            throw e
+        } catch (e: Exception) {
+            _sessionStatus.value = SessionStatus.RETRY
             null
         }
     }
 
-    /**
-     * Thread-safe token refresh with proper error handling
-     */
-    private suspend fun refreshTokenSafely(fetchProfile: Boolean): Boolean {
-        if (refreshInProgress) {
-            Log.d("Auth0Manager", "Refresh already running, waiting...")
-            kotlinx.coroutines.delay(100)
-            return _accessToken.value != null
-        }
-
-        refreshInProgress = true
-        Log.d("Auth0Manager", "Starting token refresh...")
-
-        return try {
-            kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-                credentialsManager.getCredentials(object : Callback<Credentials, CredentialsManagerException> {
-                    override fun onSuccess(result: Credentials) {
-                        Log.d("Auth0Manager", "Token refresh successful")
-                        updateStateFromCredentials(
-                            credentials = result,
-                            fetchProfile = fetchProfile,
-                            notifyChange = true,
-                        )
-                        refreshInProgress = false
-                        continuation.resumeWith(Result.success(true))
-                    }
-
-                    override fun onFailure(error: CredentialsManagerException) {
-                        Log.w("Auth0Manager", "Token refresh failed: ${error.message}")
-
-                        if (shouldClearCredentials(error)) {
-                            Log.d("Auth0Manager", "Refresh token invalid, clearing credentials")
-                            clearAuthenticationState(notifyChange = true)
-                            credentialsManager.clearCredentials()
-                        }
-
-                        refreshInProgress = false
-                        continuation.resumeWith(Result.success(false))
-                    }
-                })
-            }
-        } catch (e: Exception) {
-            Log.e("Auth0Manager", "Exception during token refresh", e)
-            refreshInProgress = false
-            false
-        }
+    /** A rejected access token must not destroy a potentially usable refresh token. */
+    fun requireSignIn() {
+        clearAuthenticationState(notifyChange = true)
     }
-
     companion object {
         @Volatile
         private var INSTANCE: Auth0Manager? = null

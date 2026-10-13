@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -140,8 +141,7 @@ class FlorisAppActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
 
-        // Only log that we're resuming - the smart auth middleware will handle token refresh when needed
-        android.util.Log.d("FlorisAppActivity", "App resumed - auth middleware will handle token refresh as needed")
+        Auth0Manager.getInstance(this).checkSessionBeforeUse()
     }
 
     override fun onPause() {
@@ -182,10 +182,7 @@ class FlorisAppActivity : ComponentActivity() {
         val navController = rememberNavController()
         val previewFieldController = rememberPreviewFieldController()
 
-        // Auth0 authentication check
-        val authManager = remember { Auth0Manager.getInstance(this@FlorisAppActivity) }
-        val isAuthenticated by authManager.isAuthenticated.collectAsState()
-
+        // Local history remains available without a network connection or account session.
         val isImeSetUp by prefs.internal.isImeSetUp.observeAsState()
 
         CompositionLocalProvider(
@@ -206,11 +203,16 @@ class FlorisAppActivity : ComponentActivity() {
                         }
                         .imePadding(),
                 ) {
+                    app.whisperme.keyboard.app.auth.SessionNotice(Auth0Manager.getInstance(this@FlorisAppActivity), Modifier.statusBarsPadding()) {
+                        Auth0Manager.getInstance(this@FlorisAppActivity).login(this@FlorisAppActivity) { _, _ -> }
+                    }
+                    if (app.whisperme.keyboard.app.auth.LocalVoiceSession.configured(this@FlorisAppActivity)) {
+                        androidx.compose.material3.Text("LOCAL TEST · loopback server · account services disabled")
+                    }
                     Routes.AppNavHost(
                         modifier = Modifier.weight(1.0f),
                         navController = navController,
                         startDestination = when {
-                            isAuthenticated.not() -> Routes.Auth.Login
                             isImeSetUp.not() -> Routes.Setup.Screen
                             else -> Routes.Settings.Home
                         },

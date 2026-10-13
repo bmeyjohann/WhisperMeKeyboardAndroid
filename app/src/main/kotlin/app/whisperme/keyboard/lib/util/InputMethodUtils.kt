@@ -37,7 +37,7 @@ import org.florisboard.lib.android.AndroidVersion
 import org.florisboard.lib.android.systemServiceOrNull
 
 private const val DELIMITER = ':'
-private const val IME_SERVICE_CLASS_NAME = "dev.patrickgold.florisboard.FlorisImeService"
+private const val IME_SERVICE_CLASS_NAME = "app.whisperme.keyboard.FlorisImeService"
 private const val TIMED_QUERY_DELAY = 500L
 
 object InputMethodUtils {
