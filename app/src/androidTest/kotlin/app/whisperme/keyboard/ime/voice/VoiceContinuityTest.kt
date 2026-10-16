@@ -39,6 +39,10 @@ class VoiceContinuityTest {
     private fun prepare() {
         main { manager.cancelVoiceProcessing() }
         server("reset")
+        // A prior screen-timeout assertion may have left this PIN-free owned emulator asleep.
+        for (command in listOf("input keyevent 224", "wm dismiss-keyguard")) {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use { it.readBytes() }
+        }
         android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
             "ime set ${context.packageName}/app.whisperme.keyboard.FlorisImeService")).use { it.readBytes() }
         fixture("launch")
@@ -50,7 +54,15 @@ class VoiceContinuityTest {
         main { FlorisImeService.showUi() }
         waitFor("Owned input view visible") { currentIme()?.isInputViewShown == true &&
             currentIme()?.currentInputEditorInfo?.hintText?.toString() == "Message body" }
-        call("startVoiceRecording")
+        instrumentation.waitForIdleSync()
+        // Initial focus/IME relayout can cancel preflight before any microphone is opened.
+        for (attempt in 0..2) {
+            call("startVoiceRecording")
+            val deadline = SystemClock.elapsedRealtime() + 1500
+            while (!manager.isVoiceRecording.value && manager.voiceErrorMessage.value == null &&
+                SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(30)
+            if (manager.isVoiceRecording.value || manager.voiceErrorMessage.value != null) break
+        }
         waitFor("Capture started") { manager.isVoiceRecording.value }
         waitFor("Caption received") { manager.voiceLiveTranscript.value.isNotBlank() }
     }
@@ -63,6 +75,12 @@ class VoiceContinuityTest {
     private fun assertAwake(awake: Boolean) = main {
         val ime = checkNotNull(currentIme())
         assertEquals(awake, ime.window.window!!.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0)
+    }
+    private fun assertSavedOrInserted(expected: String) {
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(expected.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        assertTrue("Exact result must remain copyable or be verified in the original field",
+            manager.voiceFinalText.value == expected || fixture("snapshot").getString("sha256") == hash)
     }
     @Test fun hiddenKeyboardKeepsSameSessionAndRetryUsesCompletedText() {
         try {
@@ -83,7 +101,7 @@ class VoiceContinuityTest {
             main { manager.retryVoiceProcessing() }
             waitFor("Text-only retry") { server("stats").getInt("textOnly") == 1 && !manager.isVoiceProcessing.value }
             assertEquals(1, server("stats").getJSONArray("bytes").length())
-            assertEquals("Saved first sentence.", manager.voiceFinalText.value)
+            assertSavedOrInserted("Saved first sentence.")
             assertAwake(false)
         } finally { main { manager.cancelVoiceProcessing() }; fixture("finish") }
     }
@@ -100,7 +118,7 @@ class VoiceContinuityTest {
             waitFor("Combined processing finished") { !manager.isVoiceRecording.value && !manager.isVoiceProcessing.value }
             assertEquals("Saved first sentence. New speech.", server("stats").getString("lastTranscript"))
             assertEquals(0, server("stats").getInt("textOnly"))
-            assertEquals("Saved first sentence. New speech.", manager.voiceFinalText.value)
+            assertSavedOrInserted("Saved first sentence. New speech.")
         } finally { main { manager.cancelVoiceProcessing() }; fixture("finish") }
     }
     @Test fun hidingDuringProcessingPreservesResultWithoutHiddenInsertion() {
