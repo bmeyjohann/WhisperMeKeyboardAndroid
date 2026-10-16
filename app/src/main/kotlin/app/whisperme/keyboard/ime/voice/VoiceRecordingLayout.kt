@@ -33,6 +33,7 @@ import app.whisperme.keyboard.keyboardManager
 import org.florisboard.lib.snygg.ui.SnyggBox
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun VoiceRecordingLayout(modifier: Modifier = Modifier, processingStatus: String? = null) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
@@ -114,8 +115,8 @@ fun VoiceRecordingLayout(modifier: Modifier = Modifier, processingStatus: String
                             Text(if (expanded) "Collapse" else "Show full result", color = foreground)
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(verticalArrangement = Arrangement.spacedBy(2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
                         if (recording) {
                             Text("Tap to finish and insert", color = foreground, fontSize = 14.sp)
                         } else if (processing) {
@@ -125,7 +126,12 @@ fun VoiceRecordingLayout(modifier: Modifier = Modifier, processingStatus: String
                             if (retryable) {
                                 TextButton(onClick = {
                                     if (authError) manager.openLoginScreen() else manager.retryVoiceProcessing()
-                                }) { Text(if (authError) "Sign in" else "Retry", color = foreground) }
+                                }) { Text(if (authError) "Sign in" else "Retry processing", color = foreground) }
+                                if (!authError && manager.canContinueVoiceRecording()) {
+                                    TextButton(onClick = { manager.continueVoiceRecording() }) {
+                                        Text("Keep dictating", color = foreground)
+                                    }
+                                }
                             }
                             if (transcript.isNotBlank() || result != null) {
                                 TextButton(onClick = { clipboard.setText(AnnotatedString(result ?: transcript)) }) {

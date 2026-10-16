@@ -10,6 +10,8 @@
 
     <!-- Permission needed for voice recording functionality -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
 
     <!-- Permission needed for sending voice data to backend -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -49,6 +51,7 @@
         <!-- IME service -->
         <service
             android:name=".FlorisImeService"
+            android:foregroundServiceType="microphone"
             android:label="@string/floris_app_name"
             android:permission="android.permission.BIND_INPUT_METHOD"
             android:directBootAware="true"

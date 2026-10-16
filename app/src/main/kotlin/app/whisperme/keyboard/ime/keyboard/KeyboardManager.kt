@@ -1349,10 +1349,58 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      */
     private var voiceAuthJob: Job? = null
     private var voiceFieldGeneration = 0L
+    @Volatile private var voiceInputVisible = true
+    @Volatile private var voiceOutputDetached = false
+    @Volatile private var voiceBackgroundProtected = false
+    private var realtimeTranscriptPrefix: String? = null
+
+    fun shouldShowVoiceUi(): Boolean = !voiceOutputDetached &&
+        (_isVoiceRecording.value || _isVoiceProcessing.value || _isVoiceRetryable.value || _voiceFinalText.value != null)
+
+    fun onVoiceInputViewShown() { voiceInputVisible = true }
+
+    /** Hiding a view does not cancel a dictation or an in-flight final result. */
+    fun onVoiceInputViewHidden() {
+        voiceInputVisible = false
+        voiceAudioPreparationEnabled = false
+        preparedVoiceRecorder.clear()
+        voiceButtonGesture.reset()
+        if (_isVoiceRecording.value) {
+            if (!voiceBackgroundProtected) {
+                _voiceAssistantMessage.value = "Finishing recording; Android could not keep the microphone active in the background."
+                stopVoiceRecording()
+            }
+        } else if (!_isVoiceProcessing.value) {
+            voiceAuthJob?.cancel()
+            if (realtimeStartJob?.isActive == true) {
+                realtimeGeneration++
+                realtimeStartJob?.cancel()
+                cleanupRealtimeCapture()
+            }
+        }
+    }
+
+    /** A notification stop cannot insert into an unrelated or hidden field. */
+    fun finishVoiceRecordingFromNotification() {
+        if (!voiceInputVisible) voiceOutputDetached = true
+        stopVoiceRecording()
+    }
+
+    private fun stopVoiceRecordingProtection() {
+        val generation = realtimeGeneration
+        scope.launch(Dispatchers.Main.immediate) {
+            if (generation == realtimeGeneration) {
+                voiceBackgroundProtected = false
+                FlorisImeService.endVoiceRecordingProtection()
+            }
+        }
+    }
+
     fun onVoiceFieldChanged() {
         dismissPreferenceSuggestion()
         voiceFieldGeneration++
         voiceAuthJob?.cancel()
+        if (_isVoiceRecording.value || _isVoiceProcessing.value) voiceOutputDetached = true
     }
 
     /** Preserve recovery through view recreation only for a verified input session. Metadata alone
@@ -1375,6 +1423,12 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             voiceInputConnection === FlorisImeService.currentInputConnection(),
             snapshot.packageName == info.packageName && snapshot.fieldId == info.fieldId && snapshot.fieldName == info.fieldName)
         if (!same) {
+            if (_isVoiceRecording.value || _isVoiceProcessing.value) {
+                // Preserve capture/processing, but never move its result to another editor.
+                voiceOutputDetached = true
+                restoreUiModeAfterVoice()
+                return
+            }
             cleanupVoiceState()
             _isVoiceRetryable.value = false
             _voiceFinalText.value = null
@@ -1452,6 +1506,9 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
 
         beginVoiceHistory()
+        voiceOutputDetached = false
+        realtimeGeneration++
+        realtimeTranscriptPrefix = null
         _voiceRetryStatus.value = ""
         _voiceBudgetStatus.value = ""
         _voiceConnectionStatus.value = ""
@@ -1507,6 +1564,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             flogInfo { "Created audio file: ${voiceRecordingFile?.absolutePath}" }
 
             // Initialize MediaRecorder with better configuration
+            voiceBackgroundProtected = FlorisImeService.beginVoiceRecordingProtection()
             mediaRecorder = MediaRecorder().apply {
                 try {
                     flogInfo { "Setting audio source..." }
@@ -1588,6 +1646,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
 
         } catch (e: SecurityException) {
             finishVoiceHistory("failed", "Permission denied for voice recording: ${e.message}")
+            stopVoiceRecordingProtection()
             flogError { "Permission denied for voice recording: ${e.message}" }
             _isVoiceRecording.value = false
             voiceRecordingFile = null
@@ -1602,6 +1661,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             appContext.showShortToast("❌ Microphone permission required")
         } catch (e: Exception) {
             finishVoiceHistory("failed", "Failed to start voice recording: ${e.message}")
+            stopVoiceRecordingProtection()
             flogError { "Failed to start voice recording: ${e.message}" }
             flogError { "Exception type: ${e.javaClass.simpleName}" }
             e.printStackTrace()
@@ -1652,6 +1712,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             }
             mediaRecorder = null
             _isVoiceRecording.value = false
+            stopVoiceRecordingProtection()
 
             // Note: Removed toast to avoid occluding text input - processing state is shown in button
 
@@ -1780,7 +1841,11 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                         throw VoiceSignInRequired(refreshAllowed = false)
                     error("Could not check your session; check your connection and retry")
                 }
-                val voiceContext = if (replay) checkNotNull(lastVoiceContext) else buildVoiceContext(editorInfo, editorContent, inputConnection)
+                if (realtimeTranscriptPrefix != null) check(Auth0Manager.getInstance(appContext).backendSupportsTranscriptPrefix) {
+                    "This server cannot continue a saved transcript with new audio yet. Retry final processing or update the server."
+                }
+                val voiceContext = if (replay || realtimeTranscriptPrefix != null) checkNotNull(lastVoiceContext)
+                    else buildVoiceContext(editorInfo, editorContent, inputConnection)
                 requireSupportedVoiceContext(voiceContext)
                 voiceContextWindow(voiceContext.fullText, voiceContext.cursorPosition,
                     voiceContext.cursorPosition + voiceContext.selectedText.length)
@@ -1808,6 +1873,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 lastBase64Audio = null
                 if (!replay) {
                     retainedVoiceAudio.clear()
+                    withContext(Dispatchers.Main) {
+                        check(generation == realtimeGeneration) { "Session cancelled" }
+                        voiceBackgroundProtected = FlorisImeService.beginVoiceRecordingProtection()
+                    }
                     synchronized(record) {
                         check(generation == realtimeGeneration) { "Session cancelled" }
                         record.startRecording()
@@ -1816,7 +1885,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 startup.mark(if (replay) "replay_ready" else "microphone_started")
                 withContext(Dispatchers.Main) {
                     check(generation == realtimeGeneration) { "Session cancelled" }
-                    if (!replay) _voiceLiveTranscript.value = ""
+                    if (!replay) _voiceLiveTranscript.value = realtimeTranscriptPrefix.orEmpty()
                     _isVoiceRetryable.value = false
                     _voiceErrorMessage.value = null
                     _isVoiceAuthError.value = false
@@ -2000,6 +2069,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
 
         try {
             cleanupRealtimeAudioRecordOnly()
+            stopVoiceRecordingProtection()
             withTimeout(95_000L + retainedVoiceAudio.durationMillis()) {
                 realtimeStartJob?.join()
                 realtimeSenderJob?.join()
@@ -2200,6 +2270,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             .put("transcriptionModel", prefs.voiceInput.transcriptionModel.get())
             .apply { putVoiceRouting(this) }
             .put("mode", prefs.voiceInput.mode.get()).put("liveHints", prefs.voiceInput.liveHints.get())
+            .apply { realtimeTranscriptPrefix?.let { put("transcriptPrefix", it) } }
             .put("appCategory", context.appCategory)
             .put("preferenceProfile", context.preferenceProfile?.let {
                 org.json.JSONObject().put("instructions", it.instructions).put("scope", it.scope)
@@ -2257,6 +2328,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     }
 
     private fun cleanupRealtimeCapture() {
+        val generation = realtimeGeneration
         heartbeatJob?.cancel()
         heartbeatJob = null
         realtimeSenderJob?.cancel()
@@ -2271,6 +2343,9 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             runCatching { record?.let { synchronized(it) { it.stop() } } }
             job?.cancelAndJoin()
             record?.let { synchronized(it) { it.release() } }
+            withContext(Dispatchers.Main) {
+                if (generation == realtimeGeneration) stopVoiceRecordingProtection()
+            }
             prepareVoiceAudioIfVisible()
         }
         realtimeWebSocket?.close(1000, "finished")
@@ -2747,6 +2822,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
 
     @androidx.annotation.MainThread
     private fun processVoiceResponse(response: VoiceResponse) {
+        stopVoiceRecordingProtection()
         recordVoiceBudget(response.budget, notify = true)
         historyEntry = historyEntry?.copy(failure = response.failure ?: historyEntry?.failure)
         recordVoiceMetadata(response.diagnosticsJson, response.notice)
@@ -2764,6 +2840,20 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             val errorMessage = response.error ?: "Unknown error"
             flogError { "Voice processing failed: $errorMessage" }
             handleVoiceError(errorMessage, response.isAuthenticationError)
+            return
+        }
+
+        if (!voiceInputVisible || voiceOutputDetached) {
+            finishVoiceHistory("recovered")
+            _isVoiceRecording.value = false
+            _isVoiceProcessing.value = false
+            _isVoiceRetryable.value = false
+            _isVoiceAuthError.value = false
+            _voiceProcessingStatus.value = ""
+            _voiceErrorMessage.value = null
+            _voiceAssistantMessage.value = "Result saved in Transcripts. Nothing was inserted while the keyboard was hidden or the field changed."
+            retainedVoiceAudio.clear()
+            lastBase64Audio = null
             return
         }
 
@@ -2933,6 +3023,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      */
     @androidx.annotation.MainThread
     private fun handleVoiceError(error: String, isAuthenticationError: Boolean = false) {
+        if (audioRecord == null && mediaRecorder == null) stopVoiceRecordingProtection()
         if (_voiceFinalText.value != null) sampleVoiceHistory("insertion.failed", realtimeRevision, error)
         finishVoiceHistory("failed", error)
         _voiceRetryStatus.value = ""
@@ -3280,11 +3371,36 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
+    fun canContinueVoiceRecording(): Boolean = recoverableHistoryEntry?.canContinueFinalProcessing() == true &&
+        recoverableHistoryEntry?.recovery?.transcript?.length?.let { it < 50_000 } == true &&
+        prefs.voiceInput.transcriptionProvider.get() != VoiceTranscriptionProvider.GROQ_BATCH &&
+        Auth0Manager.getInstance(appContext).backendSupportsTranscriptPrefix
+
+    /** Reuse completed ASR as text; the new connection receives only newly recorded PCM. */
+    fun continueVoiceRecording() {
+        if (_isVoiceRecording.value || _isVoiceProcessing.value || realtimeStartJob?.isActive == true || !canContinueVoiceRecording()) return
+        val saved = recoverableHistoryEntry ?: return
+        val prefix = saved.recovery?.transcript ?: return
+        val snapshot = lastVoiceContext ?: return
+        if (snapshot.fieldGeneration != voiceFieldGeneration || voiceInputConnection !== FlorisImeService.currentInputConnection() ||
+            snapshot.editorIdentity !== editorInstance.activeInfo.base) {
+            _voiceErrorMessage.value = "The original field changed. Continue the saved transcript from Transcripts; no new audio was recorded."
+            return
+        }
+        beginVoiceHistory()
+        realtimeTranscriptPrefix = prefix
+        _voiceLiveTranscript.value = prefix
+        _voiceFinalText.value = null
+        _voiceRetryStatus.value = "Continuing dictation. Only new speech is transcribed."
+        startRealtimeVoiceRecording()
+    }
+
     /**
      * Cancels voice processing and returns to previous UI mode.
      * This completely clears all voice state since user explicitly cancelled.
      */
     fun cancelVoiceProcessing() {
+        realtimeTranscriptPrefix = null
         voiceAuthJob?.cancel()
         continuationJob?.cancel()
         _historyContinuationId.value = null
@@ -3371,6 +3487,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      * Preserves retry state so user can continue after fixing network issues.
      */
     fun cleanupVoiceState() {
+        stopVoiceRecordingProtection()
         voiceAudioPreparationEnabled = false
         preparedVoiceRecorder.clear()
         voiceAuthJob?.cancel()

@@ -62,6 +62,8 @@ class Auth0Manager private constructor(context: Context) {
     val backendDefaultLlmModel = _backendDefaultLlmModel.asStateFlow()
     @Volatile var backendSupportsResumeTranscript: Boolean = false
         private set
+    @Volatile var backendSupportsTranscriptPrefix: Boolean = false
+        private set
     @Volatile var backendSupportsHeartbeat: Boolean = false
         private set
     @Volatile var backendSupportsProcessTranscript: Boolean = false
@@ -380,6 +382,7 @@ class Auth0Manager private constructor(context: Context) {
         var supportsInsertOnly = false
         backendSupportsHeartbeat = false
         backendSupportsResumeTranscript = false
+        backendSupportsTranscriptPrefix = false
         backendSupportsProcessTranscript = false
         return try {
             require(localMode || java.net.URI(capabilitiesUrl).scheme == "https") { "Backend authentication requires HTTPS" }
@@ -403,6 +406,7 @@ class Auth0Manager private constructor(context: Context) {
                             _backendDefaultLlmModel.value = capabilities.optJSONObject("defaults")?.optString("llmModel")
                             backendSupportsHeartbeat = features?.optBoolean("connectionHeartbeat") == true
                             backendSupportsResumeTranscript = features?.optBoolean("resumeTranscript") == true
+                            backendSupportsTranscriptPrefix = features?.optBoolean("transcriptPrefix") == true
                             backendSupportsProcessTranscript = features?.optBoolean("processTranscript") == true
                         }
                         status

@@ -74,6 +74,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import app.whisperme.keyboard.ime.voice.VoiceRecordingProtection
 import app.whisperme.keyboard.app.FlorisAppActivity
 import app.whisperme.keyboard.app.devtools.DevtoolsOverlay
 import app.whisperme.keyboard.app.florisPreferenceModel
@@ -149,6 +151,19 @@ class FlorisImeService : LifecycleInputMethodService() {
 
         fun currentInputConnection(): InputConnection? {
             return FlorisImeServiceReference.get()?.currentInputConnection
+        }
+
+        fun beginVoiceRecordingProtection(): Boolean {
+            val ime = FlorisImeServiceReference.get() ?: return false
+            VoiceRecordingProtection.setScreenAwake(ime, visible = true, recording = true)
+            return VoiceRecordingProtection.start(ime) { ime.keyboardManager.finishVoiceRecordingFromNotification() }
+        }
+
+        fun endVoiceRecordingProtection() {
+            FlorisImeServiceReference.get()?.let { ime ->
+                VoiceRecordingProtection.stop(ime)
+                VoiceRecordingProtection.setScreenAwake(ime, ime.isWindowShown, recording = false)
+            }
         }
 
         fun inputFeedbackController(): InputFeedbackController? {
@@ -279,6 +294,11 @@ class FlorisImeService : LifecycleInputMethodService() {
         super.onCreate()
         FlorisImeServiceReference = WeakReference(this)
         WindowCompat.setDecorFitsSystemWindows(window.window!!, false)
+        lifecycleScope.launch {
+            keyboardManager.isVoiceRecording.collect { recording ->
+                VoiceRecordingProtection.setScreenAwake(this@FlorisImeService, isWindowShown, recording)
+            }
+        }
         subtypeManager.activeSubtypeFlow.collectLatestIn(lifecycleScope) { subtype ->
             val config = Configuration(resources.configuration)
             if (prefs.localization.displayKeyboardLabelsInSubtypeLanguage.get()) {
@@ -332,6 +352,8 @@ class FlorisImeService : LifecycleInputMethodService() {
     }
 
     override fun onDestroy() {
+        keyboardManager.cleanupVoiceState()
+        VoiceRecordingProtection.stop(this)
         super.onDestroy()
         unregisterReceiver(wallpaperChangeReceiver)
         FlorisImeServiceReference = WeakReference(null)
@@ -349,6 +371,7 @@ class FlorisImeService : LifecycleInputMethodService() {
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
+        keyboardManager.onVoiceInputViewShown()
         app.whisperme.keyboard.app.auth.Auth0Manager.getInstance(this).checkSessionBeforeUse()
         flogInfo { "restarting=$restarting info=${info?.debugSummarize()}" }
         super.onStartInputView(info, restarting)
@@ -356,9 +379,7 @@ class FlorisImeService : LifecycleInputMethodService() {
         val editorInfo = FlorisEditorInfo.wrap(info)
         keyboardManager.onVoiceInputStarted(info, restarting)
         activeState.batchEdit {
-            activeState.imeUiMode = if (keyboardManager.isVoiceRecording.value ||
-                keyboardManager.isVoiceProcessing.value || keyboardManager.isVoiceRetryable.value ||
-                keyboardManager.voiceFinalText.value != null) {
+            activeState.imeUiMode = if (keyboardManager.shouldShowVoiceUi()) {
                 ImeUiMode.VOICE_RECORDING
             } else ImeUiMode.TEXT
             activeState.isSelectionMode = editorInfo.initialSelection.isSelectionMode
@@ -392,8 +413,8 @@ class FlorisImeService : LifecycleInputMethodService() {
         super.onFinishInputView(finishingInput)
         editorInstance.handleFinishInputView()
 
-        // Clean up voice state when input view is finished
-        keyboardManager.cleanupVoiceState()
+        keyboardManager.onVoiceInputViewHidden()
+        VoiceRecordingProtection.setScreenAwake(this, visible = false, recording = keyboardManager.isVoiceRecording.value)
     }
 
     override fun onFinishInput() {
@@ -406,6 +427,7 @@ class FlorisImeService : LifecycleInputMethodService() {
 
     override fun onWindowShown() {
         super.onWindowShown()
+        keyboardManager.onVoiceInputViewShown()
         keyboardManager.prepareVoiceAudio()
         if (isWindowShown) {
             flogWarning(LogTopic.IMS_EVENTS) { "Ignoring (is already shown)" }
@@ -418,12 +440,13 @@ class FlorisImeService : LifecycleInputMethodService() {
         keyboardManager.checkPendingVoiceInput()
 
         // Check if we need to restore voice retry UI
-        if (keyboardManager.isVoiceRetryable.value) {
+        if (keyboardManager.shouldShowVoiceUi()) {
             activeState.imeUiMode = ImeUiMode.VOICE_RECORDING
             flogInfo { "Restored voice retry UI after keyboard reopen" }
         }
 
         isWindowShown = true
+        VoiceRecordingProtection.setScreenAwake(this, visible = true, recording = keyboardManager.isVoiceRecording.value)
         themeManager.updateActiveTheme()
         inputFeedbackController.updateSystemPrefsState()
     }
@@ -442,8 +465,8 @@ class FlorisImeService : LifecycleInputMethodService() {
             activeState.isActionsEditorVisible = false
         }
 
-        // Clean up voice state when keyboard is hidden
-        keyboardManager.cleanupVoiceState()
+        keyboardManager.onVoiceInputViewHidden()
+        VoiceRecordingProtection.setScreenAwake(this, visible = false, recording = keyboardManager.isVoiceRecording.value)
     }
 
     override fun onEvaluateFullscreenMode(): Boolean {
